@@ -3,6 +3,7 @@ package com.appBancaria.servicio;
 import com.appBancaria.dto.RespuestaDTO;
 import com.appBancaria.dto.SolicitudDTO;
 import com.appBancaria.modelo.Cliente;
+import com.appBancaria.db.DBConexion;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -14,6 +15,8 @@ import java.net.Socket;
 import com.google.gson.Gson;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.sql.SQLException;
+
 
 public class Servidor {
     private final int PORT = 12345;
@@ -23,6 +26,19 @@ public class Servidor {
     private final GestorCuentas gestorCuentas = new GestorCuentas();
     
     public void iniciar() {
+        try {
+            // Test database connection before starting the server
+            DBConexion.getInstance().getConnection();
+            System.out.println("Database connection established successfully!");
+            
+            startServer();
+        } catch (SQLException e) {
+            System.err.println("Failed to connect to database: " + e.getMessage());
+            return; // Don't start server if database connection fails
+        }
+    }
+
+    private void startServer() {
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -88,6 +104,7 @@ public class Servidor {
             try {
                 String jsonRequest = in.readLine();
                 SolicitudDTO solicitud = gson.fromJson(jsonRequest, SolicitudDTO.class);
+                System.out.println(solicitud.getTipoOperacion());
                 
                 RespuestaDTO respuesta = new RespuestaDTO();
                 
@@ -172,6 +189,7 @@ public class Servidor {
         try {
             running = false;
             if (serverSocket != null) serverSocket.close();
+            DBConexion.getInstance().closeConnection();  // Close DB connection when server stops
         } catch (IOException e) {
             e.printStackTrace();
         }
