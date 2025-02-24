@@ -11,7 +11,6 @@ import java.util.UUID;
 public class GestorCuentas {
     
     public double consultarSaldo(String numeroCuenta) throws SQLException {
-        // Updated to match 'cuentas' table structure
         String query = "SELECT saldo FROM cuentas WHERE numero_cuenta = ?";
         try (Connection conn = DBConexion.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -28,7 +27,6 @@ public class GestorCuentas {
     }
     
     public double consultarSaldo(int identificacion) throws SQLException {
-        // Updated to match 'cuentas' table structure with correct client_id field
         String query = "SELECT saldo FROM cuentas WHERE cliente_id = (SELECT id FROM clientes WHERE numero_identificacion = ?)";
         try (Connection conn = DBConexion.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -49,7 +47,6 @@ public class GestorCuentas {
         conn.setAutoCommit(false);
         
         try {
-            // Updated to match 'clientes' table columns
             String insertCliente = "INSERT INTO clientes (nombre_completo, correo_electronico, numero_identificacion, contrasena) " +
                                  "VALUES (?, ?, ?, ?) RETURNING id";
             int clienteId;
@@ -64,9 +61,8 @@ public class GestorCuentas {
                 }
                 clienteId = rs.getInt("id");
             }
-            
-            // Updated to match 'cuentas' table columns
-            String numeroCuenta = generateAccountNumber();
+
+            String numeroCuenta = generarNumeroCuenta();
             String insertCuenta = "INSERT INTO cuentas (numero_cuenta, cliente_id, saldo) VALUES (?, ?, ?)";
             try (PreparedStatement stmt = conn.prepareStatement(insertCuenta)) {
                 stmt.setString(1, numeroCuenta);
@@ -86,7 +82,7 @@ public class GestorCuentas {
         }
     }
     
-    private String generateAccountNumber() {
+    private String generarNumeroCuenta() {
         return UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
 }

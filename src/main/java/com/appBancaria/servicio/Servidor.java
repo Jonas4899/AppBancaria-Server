@@ -31,14 +31,14 @@ public class Servidor {
             DBConexion.getInstance().getConnection();
             System.out.println("Database connection established successfully!");
             
-            startServer();
+            iniciarServidor();
         } catch (SQLException e) {
             System.err.println("Failed to connect to database: " + e.getMessage());
             return; // Don't start server if database connection fails
         }
     }
 
-    private void startServer() {
+    private void iniciarServidor() {
         new Thread(new Runnable() {
             @Override
             public void run() {
