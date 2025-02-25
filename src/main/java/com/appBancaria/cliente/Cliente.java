@@ -16,7 +16,7 @@ public class Cliente {
 
     public static void main(String[] args) {
         testConsultaSaldo();
-        // testConsignarCuenta();
+        testConsignarCuenta();
     }
     
     private static void testConsultaSaldo() {

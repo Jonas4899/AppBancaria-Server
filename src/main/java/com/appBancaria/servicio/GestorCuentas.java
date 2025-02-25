@@ -142,7 +142,24 @@ public class GestorCuentas {
         }
     }
     
-    private String generarNumeroCuenta() {
-        return UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    private String generarNumeroCuenta() throws SQLException {
+        String numeroCuenta;
+        boolean existe;
+
+        String query = "SELECT COUNT(*) FROM cuentas WHERE numero_cuenta = ?";
+
+        try (Connection conn = DBConexion.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            do {
+                numeroCuenta = String.valueOf((int) (Math.random() * 900000) + 100000);
+                stmt.setString(1, numeroCuenta);
+                ResultSet rs = stmt.executeQuery();
+                rs.next();
+                existe = rs.getInt(1) > 0;
+            } while (existe);
+        }
+
+        return numeroCuenta;
     }
 }
