@@ -102,8 +102,24 @@ public class Servidor {
 
         public RespuestaDTO procesarSolicitud() {
             try {
+                // In procesarSolicitud method
                 String jsonRequest = in.readLine();
+                if (jsonRequest == null) {
+                    // Handle null request
+                    RespuestaDTO errorResponse = new RespuestaDTO();
+                    errorResponse.setCodigo(400);
+                    errorResponse.setMensaje("Empty request received");
+                    return errorResponse;
+                }
+
                 SolicitudDTO solicitud = gson.fromJson(jsonRequest, SolicitudDTO.class);
+                if (solicitud == null || solicitud.getTipoOperacion() == null) {
+                    // Handle invalid request format
+                    RespuestaDTO errorResponse = new RespuestaDTO();
+                    errorResponse.setCodigo(400);
+                    errorResponse.setMensaje("Invalid request format");
+                    return errorResponse;
+                }
                 System.out.println(solicitud.getTipoOperacion());
                 
                 RespuestaDTO respuesta = new RespuestaDTO();
@@ -124,7 +140,6 @@ public class Servidor {
                             if (solicitud.getDatos().containsKey("numeroCuenta")) {
                                 String numeroCuenta = (String) solicitud.getDatos().get("numeroCuenta");
                                 saldo = gestorCuentas.consultarSaldo(numeroCuenta);
-                                
                                 respuesta.setCodigo(200);
                                 respuesta.setMensaje("Consulta de saldo exitosa");
                                 Map<String, Object> datos = new HashMap<>();
@@ -133,7 +148,6 @@ public class Servidor {
                             } else if (solicitud.getDatos().containsKey("identificacion")) {
                                 int identificacion = ((Number) solicitud.getDatos().get("identificacion")).intValue();
                                 saldo = gestorCuentas.consultarSaldo(identificacion);
-                                
                                 respuesta.setCodigo(200);
                                 respuesta.setMensaje("Consulta de saldo exitosa");
                                 Map<String, Object> datos = new HashMap<>();
@@ -168,7 +182,32 @@ public class Servidor {
                             respuesta.setMensaje("Error al crear cuenta: " + e.getMessage());
                         }
                         break;
-    
+
+                    case "consigna_cuenta":
+                        try {
+                            Map<String, Object> datosConsignacion = solicitud.getDatos();
+                            String numeroCuentaOrigen = (String) datosConsignacion.get("numeroCuentaOrigen");
+                            String numeroCuentaDestino = (String) datosConsignacion.get("numeroCuentaDestino");
+                            double monto = ((Number) datosConsignacion.get("monto")).doubleValue();
+
+                            Map<String, Object> resultadoConsignacion = gestorCuentas.consignarCuenta(
+                                numeroCuentaOrigen, 
+                                numeroCuentaDestino, 
+                                monto
+                            );
+
+                            respuesta.setCodigo(200);
+                            respuesta.setMensaje("Consignación procesada");
+                            respuesta.setDatos(resultadoConsignacion);
+                        } catch (Exception e) {
+                            respuesta.setCodigo(400);
+                            respuesta.setMensaje("Error en la consignación: " + e.getMessage());
+                            Map<String, Object> datosError = new HashMap<>();
+                            datosError.put("error", e.getMessage());
+                            respuesta.setDatos(datosError);
+                        }
+                        break;
+
                     default:
                         respuesta.setCodigo(400);
                         respuesta.setMensaje("Operación no soportada");
