@@ -6,7 +6,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.UUID;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -87,6 +86,7 @@ public class GestorCuentas {
     public Map<String, Object> consignarCuenta(String numCuentaOrigen, String numCuentaDestino, double monto) throws SQLException {
         String queryDestino = "SELECT saldo FROM cuentas WHERE numero_cuenta = ?";
         String updateDestino = "UPDATE cuentas SET saldo = saldo + ? WHERE numero_cuenta = ?";
+        String insertTransaccion = "INSERT INTO transacciones (tipo_transaccion, monto, cuenta_origen_id, cuenta_destino_id) VALUES (?, ?, (SELECT id FROM cuentas WHERE numero_cuenta = ?), (SELECT id FROM cuentas WHERE numero_cuenta = ?))";
         Map<String, Object> resultado = new HashMap<>();
         
         Connection conn = DBConexion.getInstance().getConnection();
@@ -119,6 +119,15 @@ public class GestorCuentas {
                 if (rsDestino.next()) {
                     saldoNuevo = rsDestino.getDouble("saldo");
                 }
+            }
+            
+            // Insertar registro en la tabla de transacciones
+            try (PreparedStatement stmtInsertTransaccion = conn.prepareStatement(insertTransaccion)) {
+                stmtInsertTransaccion.setString(1, "consignacion");
+                stmtInsertTransaccion.setDouble(2, monto);
+                stmtInsertTransaccion.setString(3, numCuentaOrigen);
+                stmtInsertTransaccion.setString(4, numCuentaDestino);
+                stmtInsertTransaccion.executeUpdate();
             }
             
             conn.commit();
