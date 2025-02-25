@@ -248,6 +248,19 @@ public class Servidor {
                         }
                         break;
 
+                    case "historial_transacciones":
+                        try {
+                            String idSesion = (String) solicitud.getDatos().get("idSesion");
+                            Map<String, Object> historial = gestorCuentas.obtenerHistorialTransacciones(idSesion);
+                            respuesta.setCodigo(200);
+                            respuesta.setMensaje("Historial de transacciones obtenido exitosamente");
+                            respuesta.setDatos(historial);
+                        } catch (Exception e) {
+                            respuesta.setCodigo(500);
+                            respuesta.setMensaje("Error al obtener historial de transacciones: " + e.getMessage());
+                        }
+                        break;
+
                     default:
                         respuesta.setCodigo(400);
                         respuesta.setMensaje("Operación no soportada");

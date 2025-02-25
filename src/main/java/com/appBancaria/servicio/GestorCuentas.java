@@ -245,4 +245,45 @@ public class GestorCuentas {
             }
         }
     }
+
+    public Map<String, Object> obtenerHistorialTransacciones(String idSesion) throws SQLException {
+        String queryCliente = "SELECT id FROM clientes WHERE id_sesion = ?";
+        String queryTransacciones = "SELECT t.tipo_transaccion, t.fecha_hora, t.monto, c.numero_cuenta AS cuenta_origen, " +
+                                    "c2.numero_cuenta AS cuenta_destino, cl.numero_identificacion AS identificacion_origen " +
+                                    "FROM transacciones t " +
+                                    "JOIN cuentas c ON t.cuenta_origen_id = c.id " +
+                                    "JOIN cuentas c2 ON t.cuenta_destino_id = c2.id " +
+                                    "JOIN clientes cl ON c.cliente_id = cl.id " +
+                                    "WHERE c2.cliente_id = ?";
+        Map<String, Object> historial = new HashMap<>();
+        
+        try (Connection conn = DBConexion.getInstance().getConnection();
+             PreparedStatement stmtCliente = conn.prepareStatement(queryCliente);
+             PreparedStatement stmtTransacciones = conn.prepareStatement(queryTransacciones)) {
+            
+            // Obtener el ID del cliente a partir del ID de sesión
+            stmtCliente.setString(1, idSesion);
+            ResultSet rsCliente = stmtCliente.executeQuery();
+            if (!rsCliente.next()) {
+                throw new SQLException("No se encontró un cliente con el ID de sesión proporcionado.");
+            }
+            int clienteId = rsCliente.getInt("id");
+            
+            // Obtener las transacciones en las que el cliente es el destinatario
+            stmtTransacciones.setInt(1, clienteId);
+            ResultSet rsTransacciones = stmtTransacciones.executeQuery();
+            
+            while (rsTransacciones.next()) {
+                Map<String, Object> transaccion = new HashMap<>();
+                transaccion.put("tipo_transaccion", rsTransacciones.getString("tipo_transaccion"));
+                transaccion.put("fecha_hora", rsTransacciones.getTimestamp("fecha_hora"));
+                transaccion.put("monto", rsTransacciones.getDouble("monto"));
+                transaccion.put("cuenta_origen", rsTransacciones.getString("cuenta_origen"));
+                transaccion.put("cuenta_destino", rsTransacciones.getString("cuenta_destino"));
+                transaccion.put("identificacion_origen", rsTransacciones.getString("identificacion_origen"));
+                historial.put(String.valueOf(rsTransacciones.getRow()), transaccion);
+            }
+        }
+        return historial;
+    }
 }

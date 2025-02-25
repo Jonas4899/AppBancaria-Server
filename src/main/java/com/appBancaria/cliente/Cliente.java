@@ -15,10 +15,100 @@ public class Cliente {
     private static final Gson gson = new Gson();
 
     public static void main(String[] args) {
-        // testConsultaSaldo();
-        testConsignarCuenta();
+        testHistorialTransacciones();
     }
-    
+
+    private static void testHistorialTransacciones() {
+        String correo = "yecid@ejemplo.com";
+        String contrasena = "344";
+        String idSesion = login(correo, contrasena);
+        if (idSesion != null) {
+            solicitarHistorialTransacciones(idSesion);
+            logout(correo, idSesion);
+        }
+    }
+
+    private static String login(String correo, String contrasena) {
+        try (Socket socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
+             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+
+            Map<String, Object> datos = new HashMap<>();
+            datos.put("correo", correo);
+            datos.put("contrasena", contrasena);
+
+            SolicitudDTO solicitud = new SolicitudDTO();
+            solicitud.setTipoOperacion("login");
+            solicitud.setDatos(datos);
+
+            String jsonRequest = gson.toJson(solicitud);
+            out.println(jsonRequest);
+
+            String response = in.readLine();
+            System.out.println("Login response: " + response);
+
+            com.google.gson.JsonObject jsonResponse = com.google.gson.JsonParser.parseString(response).getAsJsonObject();
+            int codigo = jsonResponse.get("codigo").getAsInt();
+            if (codigo == 200) {
+                return jsonResponse.get("datos").getAsJsonObject().get("idSesion").getAsString();
+            } else {
+                System.out.println("Login failed: " + jsonResponse.get("mensaje").getAsString());
+                return null;
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    private static void solicitarHistorialTransacciones(String idSesion) {
+        try (Socket socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
+             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+
+            Map<String, Object> datos = new HashMap<>();
+            datos.put("idSesion", idSesion);
+
+            SolicitudDTO solicitud = new SolicitudDTO();
+            solicitud.setTipoOperacion("historial_transacciones");
+            solicitud.setDatos(datos);
+
+            String jsonRequest = gson.toJson(solicitud);
+            out.println(jsonRequest);
+
+            String response = in.readLine();
+            System.out.println("Historial response: " + response);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void logout(String correo, String idSesion) {
+        try (Socket socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
+             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+
+            Map<String, Object> datos = new HashMap<>();
+            datos.put("correo", correo);
+            datos.put("idSesion", idSesion);
+
+            SolicitudDTO solicitud = new SolicitudDTO();
+            solicitud.setTipoOperacion("logout");
+            solicitud.setDatos(datos);
+
+            String jsonRequest = gson.toJson(solicitud);
+            out.println(jsonRequest);
+
+            String response = in.readLine();
+            System.out.println("Logout response: " + response);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private static void testConsultaSaldo() {
         try (Socket socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
              PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
@@ -47,7 +137,7 @@ public class Cliente {
             e.printStackTrace();
         }
     }
-    
+
     private static void testConsignarCuenta() {
         try (Socket socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
              PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
@@ -57,7 +147,7 @@ public class Cliente {
             Map<String, Object> datos = new HashMap<>();
             datos.put("numeroCuentaOrigen", "FB11A3F5");
             datos.put("numeroCuentaDestino", "9C630EB9");
-            datos.put("monto", 50555);
+            datos.put("monto", 666);
 
             SolicitudDTO solicitud = new SolicitudDTO();
             solicitud.setTipoOperacion("consigna_cuenta");
