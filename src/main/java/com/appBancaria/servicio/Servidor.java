@@ -208,6 +208,46 @@ public class Servidor {
                         }
                         break;
 
+                    case "login":
+                        try {
+                            String correo = (String) solicitud.getDatos().get("correo");
+                            String contrasena = (String) solicitud.getDatos().get("contrasena");
+
+                            if (gestorCuentas.verificarSesionActiva(correo)) {
+                                respuesta.setCodigo(400);
+                                respuesta.setMensaje("Usuario ya tiene una sesión activa");
+                            } else {
+                                String idSesion = gestorCuentas.autenticarUsuario(correo, contrasena);
+                                if (idSesion != null) {
+                                    respuesta.setCodigo(200);
+                                    respuesta.setMensaje("Autenticación exitosa");
+                                    Map<String, Object> datos = new HashMap<>();
+                                    datos.put("idSesion", idSesion);
+                                    respuesta.setDatos(datos);
+                                } else {
+                                    respuesta.setCodigo(401);
+                                    respuesta.setMensaje("Correo o contraseña incorrectos");
+                                }
+                            }
+                        } catch (Exception e) {
+                            respuesta.setCodigo(500);
+                            respuesta.setMensaje("Error en la autenticación: " + e.getMessage());
+                        }
+                        break;
+
+                    case "logout":
+                        try {
+                            String correo = (String) solicitud.getDatos().get("correo");
+                            String idSesion = (String) solicitud.getDatos().get("idSesion");
+                            gestorCuentas.cerrarSesion(correo, idSesion);
+                            respuesta.setCodigo(200);
+                            respuesta.setMensaje("Sesión cerrada exitosamente");
+                        } catch (Exception e) {
+                            respuesta.setCodigo(500);
+                            respuesta.setMensaje("Error al cerrar sesión: " + e.getMessage());
+                        }
+                        break;
+
                     default:
                         respuesta.setCodigo(400);
                         respuesta.setMensaje("Operación no soportada");

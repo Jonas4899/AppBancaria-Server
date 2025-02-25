@@ -8,6 +8,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 public class GestorCuentas {
     
@@ -170,5 +171,78 @@ public class GestorCuentas {
         }
 
         return numeroCuenta;
+    }
+
+    public String autenticarUsuario(String correo, String contrasena) throws SQLException {
+        String query = "SELECT id FROM clientes WHERE correo_electronico = ? AND contrasena = ?";
+        try (Connection conn = DBConexion.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            
+            stmt.setString(1, correo);
+            stmt.setString(2, contrasena);
+            ResultSet rs = stmt.executeQuery();
+            
+            if (rs.next()) {
+                int clienteId = rs.getInt("id");
+                String idSesion = iniciarSesion(clienteId);
+                return idSesion;
+            } else {
+                return null;
+            }
+        }
+    }
+
+    private String iniciarSesion(int clienteId) throws SQLException {
+        String update = "UPDATE clientes SET sesion_activa = true, id_sesion = ? WHERE id = ?";
+        String idSesion = UUID.randomUUID().toString();
+        try (Connection conn = DBConexion.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(update)) {
+            
+            stmt.setString(1, idSesion);
+            stmt.setInt(2, clienteId);
+            stmt.executeUpdate();
+        }
+        return idSesion;
+    }
+    /*
+    public void cerrarSesion(String correo) throws SQLException {
+        String update = "UPDATE clientes SET sesion_activa = false, id_sesion = NULL WHERE correo_electronico = ?";
+        try (Connection conn = DBConexion.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(update)) {
+            
+            stmt.setString(1, correo);
+            stmt.executeUpdate();
+        }
+    } */
+
+    public void cerrarSesion(String correo, String idSesion) throws SQLException {
+        String update = "UPDATE clientes SET sesion_activa = false, id_sesion = NULL WHERE correo_electronico = ? AND id_sesion = ?";
+        try (Connection conn = DBConexion.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(update)) {
+            
+            stmt.setString(1, correo);
+            stmt.setString(2, idSesion);
+            int rowsUpdated = stmt.executeUpdate();
+            
+            if (rowsUpdated == 0) {
+                throw new SQLException("No se encontró una sesión activa para el correo proporcionado.");
+            }
+        }
+    }
+
+    public boolean verificarSesionActiva(String correo) throws SQLException {
+        String query = "SELECT sesion_activa FROM clientes WHERE correo_electronico = ?";
+        try (Connection conn = DBConexion.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            
+            stmt.setString(1, correo);
+            ResultSet rs = stmt.executeQuery();
+            
+            if (rs.next()) {
+                return rs.getBoolean("sesion_activa");
+            } else {
+                return false;
+            }
+        }
     }
 }
