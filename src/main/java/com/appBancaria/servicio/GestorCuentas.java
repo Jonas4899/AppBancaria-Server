@@ -301,4 +301,55 @@ public class GestorCuentas {
         }
         return historial;
     }
+    
+    /**
+     * Obtiene la información completa de un cliente a partir de su ID de sesión
+     * @param idSesion ID de sesión del cliente
+     * @return Mapa con la información del cliente
+     * @throws SQLException si ocurre un error con la base de datos
+     */
+    public Map<String, Object> obtenerInformacionCliente(String idSesion) throws SQLException {
+        String query = "SELECT cl.id, cl.nombre_completo, cl.correo_electronico, cl.numero_identificacion, " +
+                      "c.numero_cuenta, c.saldo " +
+                      "FROM clientes cl " +
+                      "JOIN cuentas c ON cl.id = c.cliente_id " +
+                      "WHERE cl.id_sesion = ?";
+                      
+        Map<String, Object> informacion = new HashMap<>();
+        
+        try (Connection conn = DBConexion.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            
+            stmt.setString(1, idSesion);
+            ResultSet rs = stmt.executeQuery();
+            
+            if (rs.next()) {
+                informacion.put("idSesion", idSesion);
+                informacion.put("nombre", rs.getString("nombre_completo"));
+                informacion.put("correo", rs.getString("correo_electronico"));
+                informacion.put("identificacion", rs.getString("numero_identificacion"));
+                informacion.put("numeroCuenta", rs.getString("numero_cuenta"));
+                informacion.put("saldo", rs.getDouble("saldo"));
+                return informacion;
+            } else {
+                throw new SQLException("No se encontró la información del cliente con el ID de sesión proporcionado.");
+            }
+        }
+    }
+    
+    /**
+     * Método que combina la autenticación y obtención de información del cliente
+     * @param correo correo electrónico del cliente
+     * @param contrasena contraseña del cliente
+     * @return Mapa con la información completa del cliente o null si la autenticación falla
+     * @throws SQLException si ocurre un error con la base de datos
+     */
+    public Map<String, Object> autenticarYObtenerInformacionCliente(String correo, String contrasena) throws SQLException {
+        String idSesion = autenticarUsuario(correo, contrasena);
+        if (idSesion != null) {
+            return obtenerInformacionCliente(idSesion);
+        } else {
+            return null;
+        }
+    }
 }

@@ -217,14 +217,12 @@ public class Servidor {
                                 respuesta.setCodigo(400);
                                 respuesta.setMensaje("Usuario ya tiene una sesión activa");
                             } else {
-                                String idSesion = gestorCuentas.autenticarUsuario(correo, contrasena);
-                                if (idSesion != null) {
+                                // Usar el nuevo método para obtener toda la información del cliente
+                                Map<String, Object> datosCliente = gestorCuentas.autenticarYObtenerInformacionCliente(correo, contrasena);
+                                if (datosCliente != null) {
                                     respuesta.setCodigo(200);
                                     respuesta.setMensaje("Autenticación exitosa");
-                                    Map<String, Object> datos = new HashMap<>();
-                                    datos.put("idSesion", idSesion);
-                                    datos.put("correo", correo);  // Adding the email to the response data
-                                    respuesta.setDatos(datos);
+                                    respuesta.setDatos(datosCliente);
                                 } else {
                                     respuesta.setCodigo(401);
                                     respuesta.setMensaje("Correo o contraseña incorrectos");
@@ -259,6 +257,19 @@ public class Servidor {
                         } catch (Exception e) {
                             respuesta.setCodigo(500);
                             respuesta.setMensaje("Error al obtener historial de transacciones: " + e.getMessage());
+                        }
+                        break;
+
+                    case "obtener_informacion_cliente":
+                        try {
+                            String idSesion = (String) solicitud.getDatos().get("idSesion");
+                            Map<String, Object> informacionCliente = gestorCuentas.obtenerInformacionCliente(idSesion);
+                            respuesta.setCodigo(200);
+                            respuesta.setMensaje("Información del cliente obtenida exitosamente");
+                            respuesta.setDatos(informacionCliente);
+                        } catch (Exception e) {
+                            respuesta.setCodigo(500);
+                            respuesta.setMensaje("Error al obtener información del cliente: " + e.getMessage());
                         }
                         break;
 
