@@ -223,6 +223,7 @@ public class Servidor {
                                     respuesta.setMensaje("Autenticación exitosa");
                                     Map<String, Object> datos = new HashMap<>();
                                     datos.put("idSesion", idSesion);
+                                    datos.put("correo", correo);  // Adding the email to the response data
                                     respuesta.setDatos(datos);
                                 } else {
                                     respuesta.setCodigo(401);
