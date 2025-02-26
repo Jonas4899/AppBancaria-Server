@@ -84,7 +84,10 @@ public class GestorCuentas {
         }
     }
 
-    public Map<String, Object> consignarCuenta(String numCuentaOrigen, String numCuentaDestino, double monto) throws SQLException {
+    public Map<String, Object> consignarCuenta(String idSesion, String numCuentaDestino, double monto) throws SQLException {
+        String queryOrigen = "SELECT c.numero_cuenta FROM cuentas c " +
+                             "JOIN clientes cl ON c.cliente_id = cl.id " +
+                             "WHERE cl.id_sesion = ?";
         String queryDestino = "SELECT saldo FROM cuentas WHERE numero_cuenta = ?";
         String updateDestino = "UPDATE cuentas SET saldo = saldo + ? WHERE numero_cuenta = ?";
         String insertTransaccion = "INSERT INTO transacciones (tipo_transaccion, monto, cuenta_origen_id, cuenta_destino_id) VALUES (?, ?, (SELECT id FROM cuentas WHERE numero_cuenta = ?), (SELECT id FROM cuentas WHERE numero_cuenta = ?))";
@@ -93,6 +96,17 @@ public class GestorCuentas {
         Connection conn = DBConexion.getInstance().getConnection();
         try {
             conn.setAutoCommit(false);
+            
+            // Obtener cuenta de origen usando el ID de sesión
+            String numCuentaOrigen;
+            try (PreparedStatement stmtOrigen = conn.prepareStatement(queryOrigen)) {
+                stmtOrigen.setString(1, idSesion);
+                ResultSet rsOrigen = stmtOrigen.executeQuery();
+                if (!rsOrigen.next()) {
+                    throw new SQLException("No se encontró una cuenta asociada a la sesión activa");
+                }
+                numCuentaOrigen = rsOrigen.getString("numero_cuenta");
+            }
             
             // Verificar que la cuenta de destino exista
             double saldoAnterior = 0.0;
@@ -140,6 +154,7 @@ public class GestorCuentas {
             resultado.put("saldoNuevo", saldoNuevo);
             resultado.put("monto", monto);
             resultado.put("numeroCuentaDestino", numCuentaDestino);
+            resultado.put("numeroCuentaOrigen", numCuentaOrigen);
             
             return resultado;
         } catch (SQLException e) {

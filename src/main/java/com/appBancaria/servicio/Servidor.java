@@ -186,12 +186,12 @@ public class Servidor {
                     case "consigna_cuenta":
                         try {
                             Map<String, Object> datosConsignacion = solicitud.getDatos();
-                            String numeroCuentaOrigen = (String) datosConsignacion.get("numeroCuentaOrigen");
+                            String idSesion = (String) datosConsignacion.get("idSesion");
                             String numeroCuentaDestino = (String) datosConsignacion.get("numeroCuentaDestino");
                             double monto = ((Number) datosConsignacion.get("monto")).doubleValue();
 
                             Map<String, Object> resultadoConsignacion = gestorCuentas.consignarCuenta(
-                                numeroCuentaOrigen, 
+                                idSesion, 
                                 numeroCuentaDestino, 
                                 monto
                             );
@@ -282,6 +282,7 @@ public class Servidor {
             running = false;
             if (serverSocket != null) serverSocket.close();
             DBConexion.getInstance().closeConnection();  // Close DB connection when server stops
+            System.out.println("\nApagando servidor... ;(");
         } catch (IOException e) {
             e.printStackTrace();
         }
