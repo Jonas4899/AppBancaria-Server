@@ -16,6 +16,8 @@ import com.google.gson.Gson;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.sql.SQLException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 
 public class Servidor {
@@ -29,11 +31,11 @@ public class Servidor {
         try {
             // Test database connection before starting the server
             DBConexion.getInstance().getConnection();
-            System.out.println("Database connection established successfully!");
+            log("Database connection established successfully!");
             
             iniciarServidor();
         } catch (SQLException e) {
-            System.err.println("Failed to connect to database: " + e.getMessage());
+            logError("Failed to connect to database: " + e.getMessage());
             return; // Don't start server if database connection fails
         }
     }
@@ -44,7 +46,8 @@ public class Servidor {
             public void run() {
                 try {
                     serverSocket = new ServerSocket(PORT);
-                    System.out.println("Server started on port " + PORT);
+                    log("Server started on port " + PORT);
+                    log("Waiting for client connections...");
 
                     while (running) {
                         Socket clientSocket = serverSocket.accept();
@@ -53,7 +56,10 @@ public class Servidor {
                     }
                 } catch (IOException ex) {
                     if (running) {
+                        logError("Server error: " + ex.getMessage());
                         ex.printStackTrace();
+                    } else {
+                        log("Server socket closed");
                     }
                 }
             }
@@ -72,7 +78,7 @@ public class Servidor {
         @Override
         public void run() {
             try {
-                System.out.println("New client connected: " + clientSocket.getInetAddress());
+                log("New client connected: " + clientSocket.getInetAddress());
                 
                 // Initialize input/output streams
                 in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
@@ -88,14 +94,14 @@ public class Servidor {
                 }
                 
             } catch (IOException e) {
-                System.out.println("Client disconnected: " + clientSocket.getInetAddress());
+                log("Client disconnected: " + clientSocket.getInetAddress());
             } finally {
                 try {
                     if (out != null) out.close();
                     if (in != null) in.close();
                     if (clientSocket != null) clientSocket.close();
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    logError("Error closing client connection: " + e.getMessage());
                 }
             }
         }
@@ -120,7 +126,7 @@ public class Servidor {
                     errorResponse.setMensaje("Invalid request format");
                     return errorResponse;
                 }
-                System.out.println(solicitud.getTipoOperacion());
+                log("Request received: " + solicitud.getTipoOperacion());
                 
                 RespuestaDTO respuesta = new RespuestaDTO();
                 
@@ -132,6 +138,7 @@ public class Servidor {
                         respuesta.setMensaje("pong");
                         // Puedes incluir un mapa vacío o datos adicionales si lo deseas
                         respuesta.setDatos(new HashMap<>());
+                        log("Ping request processed successfully");
                         break;
 
                     case "consulta_saldo":
@@ -139,24 +146,29 @@ public class Servidor {
                             double saldo;
                             if (solicitud.getDatos().containsKey("numeroCuenta")) {
                                 String numeroCuenta = (String) solicitud.getDatos().get("numeroCuenta");
+                                log("Processing saldo request for account: " + numeroCuenta);
                                 saldo = gestorCuentas.consultarSaldo(numeroCuenta);
                                 respuesta.setCodigo(200);
                                 respuesta.setMensaje("Consulta de saldo exitosa");
                                 Map<String, Object> datos = new HashMap<>();
                                 datos.put("saldo", saldo);
                                 respuesta.setDatos(datos);
+                                log("Saldo request successful for account: " + numeroCuenta);
                             } else if (solicitud.getDatos().containsKey("identificacion")) {
                                 int identificacion = ((Number) solicitud.getDatos().get("identificacion")).intValue();
+                                log("Processing saldo request for ID: " + identificacion);
                                 saldo = gestorCuentas.consultarSaldo(identificacion);
                                 respuesta.setCodigo(200);
                                 respuesta.setMensaje("Consulta de saldo exitosa");
                                 Map<String, Object> datos = new HashMap<>();
                                 datos.put("saldo", saldo);
                                 respuesta.setDatos(datos);
+                                log("Saldo request successful for ID: " + identificacion);
                             }
                         } catch (Exception e) {
                             respuesta.setCodigo(400);
                             respuesta.setMensaje("Error: " + e.getMessage());
+                            logError("Error processing saldo request: " + e.getMessage());
                         }
                         break;
     
@@ -276,6 +288,7 @@ public class Servidor {
                     default:
                         respuesta.setCodigo(400);
                         respuesta.setMensaje("Operación no soportada");
+                        log("Unsupported operation: " + solicitud.getTipoOperacion());
                         break;
                 }
                 
@@ -284,6 +297,7 @@ public class Servidor {
                 RespuestaDTO errorResponse = new RespuestaDTO();
                 errorResponse.setCodigo(500);
                 errorResponse.setMensaje("Error procesando la solicitud: " + e.getMessage());
+                logError("Error processing request: " + e.getMessage());
                 return errorResponse;
             }
         }
@@ -291,12 +305,26 @@ public class Servidor {
 
     public void detener() {
         try {
+            log("Stopping server...");
             running = false;
             if (serverSocket != null) serverSocket.close();
             DBConexion.getInstance().closeConnection();  // Close DB connection when server stops
-            System.out.println("\nApagando servidor... ;(");
+            log("Database connection closed");
+            log("Server stopped");
         } catch (IOException e) {
+            logError("Error stopping server: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+    
+    // Helper methods for logging with timestamps
+    private void log(String message) {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        System.out.println("[" + sdf.format(new Date()) + "] " + message);
+    }
+    
+    private void logError(String message) {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        System.err.println("[" + sdf.format(new Date()) + "] ERROR: " + message);
     }
 }
