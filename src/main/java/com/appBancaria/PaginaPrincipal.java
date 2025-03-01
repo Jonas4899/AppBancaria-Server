@@ -4,19 +4,24 @@ import com.appBancaria.servicio.Servidor;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 public class PaginaPrincipal extends JFrame {
     private JButton iniciarButton;
     private JButton detenerButton;
     private JTextArea logTextArea;
+    private JTextArea clientesTextArea;
     private JLabel estadoLabel;
     private Servidor servidor;
+    private Timer actualizadorClientes;
 
     // Colores para los botones
     private final Color COLOR_BOTON_INICIAR = new Color(46, 139, 87); // Verde oscuro
@@ -27,7 +32,7 @@ public class PaginaPrincipal extends JFrame {
     public PaginaPrincipal() {
         // Configuración básica de la ventana
         setTitle("Servidor Bancario");
-        setSize(500, 400);
+        setSize(800, 500);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
@@ -53,13 +58,39 @@ public class PaginaPrincipal extends JFrame {
         
         mainPanel.add(headerPanel, BorderLayout.NORTH);
 
-        // Panel central con área de texto
+        // Panel central con área de texto dividido en dos partes
+        JPanel centerPanel = new JPanel(new GridLayout(1, 2, 10, 0));
+        
+        // Área para logs del servidor
         logTextArea = new JTextArea();
         logTextArea.setEditable(false);
         logTextArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        JScrollPane scrollPane = new JScrollPane(logTextArea);
-        scrollPane.setBorder(BorderFactory.createTitledBorder("Clientes conectados y Log del servidor:"));
-        mainPanel.add(scrollPane, BorderLayout.CENTER);
+        JScrollPane logScrollPane = new JScrollPane(logTextArea);
+        logScrollPane.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createEtchedBorder(), 
+            "Log del servidor",
+            TitledBorder.LEFT,
+            TitledBorder.TOP,
+            new Font("Arial", Font.BOLD, 12)
+        ));
+        
+        // Área para clientes conectados
+        clientesTextArea = new JTextArea();
+        clientesTextArea.setEditable(false);
+        clientesTextArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        clientesTextArea.setBackground(new Color(245, 245, 245));  // Color de fondo ligeramente diferente
+        JScrollPane clientesScrollPane = new JScrollPane(clientesTextArea);
+        clientesScrollPane.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createEtchedBorder(), 
+            "Clientes conectados",
+            TitledBorder.LEFT,
+            TitledBorder.TOP,
+            new Font("Arial", Font.BOLD, 12)
+        ));
+        
+        centerPanel.add(logScrollPane);
+        centerPanel.add(clientesScrollPane);
+        mainPanel.add(centerPanel, BorderLayout.CENTER);
 
         // Panel inferior con botones
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 30, 10));
@@ -90,6 +121,9 @@ public class PaginaPrincipal extends JFrame {
                 if (servidor != null) {
                     log("Deteniendo el servidor antes de salir...");
                     servidor.detener();
+                }
+                if (actualizadorClientes != null) {
+                    actualizadorClientes.stop();
                 }
                 System.exit(0);
             }
@@ -142,12 +176,13 @@ public class PaginaPrincipal extends JFrame {
             boton.setForeground(COLOR_TEXTO_BOTON);
         } else {
             boton.setBackground(COLOR_BOTON_DISABLED);
-            boton.setForeground(new Color(100, 100, 100)); // Corrección aquí
+            boton.setForeground(new Color(100, 100, 100));
         }
     }
 
     private void iniciarServidor() {
         logTextArea.setText(""); // Limpiar logs anteriores
+        clientesTextArea.setText(""); // Limpiar lista de clientes
         log("Iniciando servidor...");
         estadoLabel.setText("INICIANDO");
         estadoLabel.setForeground(new Color(255, 150, 0));
@@ -173,6 +208,9 @@ public class PaginaPrincipal extends JFrame {
                 });
                 
                 log("Servidor iniciado correctamente. Esperando conexiones...");
+                
+                // Iniciar el temporizador para actualizar la lista de clientes
+                iniciarActualizadorClientes();
             } catch (Exception ex) {
                 log("Error al iniciar el servidor: " + ex.getMessage());
                 SwingUtilities.invokeLater(() -> {
@@ -198,6 +236,12 @@ public class PaginaPrincipal extends JFrame {
         detenerButton.setEnabled(false);
         actualizarEstiloBoton(detenerButton, false);
         
+        // Detener actualizador de clientes
+        if (actualizadorClientes != null) {
+            actualizadorClientes.stop();
+            actualizadorClientes = null;
+        }
+        
         // Detener el servidor en un hilo separado
         new Thread(() -> {
             if (servidor != null) {
@@ -213,6 +257,46 @@ public class PaginaPrincipal extends JFrame {
                 System.exit(0); // Termina la aplicación completamente
             });
         }).start();
+    }
+    
+    private void iniciarActualizadorClientes() {
+        // Temporizador que actualiza la lista de clientes conectados cada segundo
+        actualizadorClientes = new Timer(1000, e -> actualizarListaClientes());
+        actualizadorClientes.start();
+    }
+    
+    private void actualizarListaClientes() {
+        if (servidor != null) {
+            // Obtener la lista actual de clientes conectados
+            java.util.List<Servidor.ClienteConectado> clientes = servidor.getClientesConectados();
+            
+            // Construir texto con la información de los clientes
+            StringBuilder sb = new StringBuilder();
+            
+            // Mostrar el número de clientes conectados
+            sb.append("Total de clientes conectados: ").append(clientes.size()).append("\n\n");
+            
+            // Formateo de fecha para mostrar la hora de conexión
+            SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss");
+            
+            // Si no hay clientes conectados
+            if (clientes.isEmpty()) {
+                sb.append("No hay clientes conectados actualmente.\n");
+            } else {
+                // Listar cada cliente conectado
+                for (int i = 0; i < clientes.size(); i++) {
+                    Servidor.ClienteConectado cliente = clientes.get(i);
+                    sb.append(i + 1).append(". ");
+                    sb.append(cliente.getInformacionCliente()).append("\n");
+                    sb.append("   IP: ").append(cliente.getDireccionIP()).append("\n");
+                    sb.append("   Conectado desde: ").append(sdf.format(cliente.getHoraConexion())).append("\n\n");
+                }
+            }
+            
+            // Actualizar el área de texto en el EDT
+            final String texto = sb.toString();
+            SwingUtilities.invokeLater(() -> clientesTextArea.setText(texto));
+        }
     }
     
     private void redirectSystemStreams() {
