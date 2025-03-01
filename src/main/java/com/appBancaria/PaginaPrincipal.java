@@ -204,15 +204,13 @@ public class PaginaPrincipal extends JFrame {
                 servidor.detener();
             }
             
-            // Actualizar UI en el hilo de EDT
+            log("Servidor detenido correctamente.");
+            
+            // Cerrar la aplicación completamente después de detener el servidor
+            log("Cerrando la aplicación...");
             SwingUtilities.invokeLater(() -> {
-                estadoLabel.setText("DETENIDO");
-                estadoLabel.setForeground(Color.RED);
-                
-                // Actualizar estado de los botones
-                iniciarButton.setEnabled(true);
-                actualizarEstiloBoton(iniciarButton, true);
-                log("Servidor detenido correctamente.");
+                dispose(); // Cierra la ventana
+                System.exit(0); // Termina la aplicación completamente
             });
         }).start();
     }
