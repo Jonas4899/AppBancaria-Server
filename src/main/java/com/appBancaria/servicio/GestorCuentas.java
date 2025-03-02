@@ -45,42 +45,135 @@ public class GestorCuentas {
     }
     
     public String crearCuenta(Cliente cliente) throws SQLException {
-        Connection conn = DBConexion.getInstance().getConnection();
-        conn.setAutoCommit(false);
+        System.out.println("Iniciando proceso de creación de cuenta para " + cliente.getNombre());
+        
+        // Obtenemos una nueva conexión específicamente para esta operación
+        Connection conn = null;
+        String numeroCuenta = null;
+        boolean autoCommitOriginal = true;
         
         try {
-            String insertCliente = "INSERT INTO clientes (nombre_completo, correo_electronico, numero_identificacion, contrasena) " +
-                                 "VALUES (?, ?, ?, ?) RETURNING id";
-            int clienteId;
-            try (PreparedStatement stmt = conn.prepareStatement(insertCliente)) {
-                stmt.setString(1, cliente.getNombre());
-                stmt.setString(2, cliente.getCorreo());
-                stmt.setInt(3, cliente.getIdentificacion());
-                stmt.setString(4, cliente.getContrasena());
-                ResultSet rs = stmt.executeQuery();
-                if (!rs.next()) {
-                    throw new SQLException("Failed to create client");
-                }
-                clienteId = rs.getInt("id");
-            }
-
-            String numeroCuenta = generarNumeroCuenta();
-            String insertCuenta = "INSERT INTO cuentas (numero_cuenta, cliente_id, saldo) VALUES (?, ?, ?)";
-            try (PreparedStatement stmt = conn.prepareStatement(insertCuenta)) {
-                stmt.setString(1, numeroCuenta);
-                stmt.setInt(2, clienteId);  // Using the returned client ID
-                stmt.setDouble(3, 0.0);
-                stmt.executeUpdate();
+            System.out.println("Solicitando conexión a la base de datos...");
+            conn = DBConexion.getInstance().getConnection();
+            
+            if (conn == null) {
+                System.err.println("Error: La conexión es nula");
+                throw new SQLException("No se pudo establecer conexión con la base de datos");
             }
             
+            // Guardamos el estado original del autoCommit
+            autoCommitOriginal = conn.getAutoCommit();
+            
+            // Desactivamos el autocommit para la transacción
+            System.out.println("Desactivando autoCommit...");
+            conn.setAutoCommit(false);
+            
+            // Verificar si la conexión está activa
+            if (conn.isClosed()) {
+                System.err.println("Error: La conexión está cerrada");
+                throw new SQLException("La conexión a la base de datos está cerrada");
+            }
+            
+            // Verificamos primero si ya existe un cliente con ese correo o identificación
+            System.out.println("Verificando si el cliente ya existe...");
+            String checkExistingQuery = "SELECT COUNT(*) FROM clientes WHERE correo_electronico = ? OR numero_identificacion = ?";
+            PreparedStatement checkStmt = conn.prepareStatement(checkExistingQuery);
+            checkStmt.setString(1, cliente.getCorreo());
+            checkStmt.setInt(2, cliente.getIdentificacion());
+            ResultSet checkRs = checkStmt.executeQuery();
+            checkRs.next();
+            int count = checkRs.getInt(1);
+            checkRs.close();
+            checkStmt.close();
+            
+            if (count > 0) {
+                throw new SQLException("Ya existe un cliente con ese correo o número de identificación");
+            }
+            
+            // Insertar cliente en la tabla clientes
+            System.out.println("Insertando nuevo cliente en la base de datos...");
+            String insertCliente = "INSERT INTO clientes (nombre_completo, correo_electronico, numero_identificacion, contrasena) " +
+                                   "VALUES (?, ?, ?, ?) RETURNING id";
+            PreparedStatement stmtCliente = conn.prepareStatement(insertCliente);
+            stmtCliente.setString(1, cliente.getNombre());
+            stmtCliente.setString(2, cliente.getCorreo());
+            stmtCliente.setInt(3, cliente.getIdentificacion());
+            stmtCliente.setString(4, cliente.getContrasena());
+            
+            ResultSet rsCliente = stmtCliente.executeQuery();
+            int clienteId = 0;
+            if (rsCliente.next()) {
+                clienteId = rsCliente.getInt("id");
+                System.out.println("Cliente insertado con ID: " + clienteId);
+            } else {
+                throw new SQLException("No se pudo crear el cliente en la base de datos");
+            }
+            rsCliente.close();
+            stmtCliente.close();
+            
+            // Generar número de cuenta único
+            System.out.println("Generando número de cuenta...");
+            numeroCuenta = String.valueOf(100000 + (int)(Math.random() * 900000));
+            
+            // Verificar que el número de cuenta no exista
+            String checkCuentaQuery = "SELECT COUNT(*) FROM cuentas WHERE numero_cuenta = ?";
+            PreparedStatement checkCuentaStmt = conn.prepareStatement(checkCuentaQuery);
+            checkCuentaStmt.setString(1, numeroCuenta);
+            ResultSet checkCuentaRs = checkCuentaStmt.executeQuery();
+            checkCuentaRs.next();
+            int cuentaCount = checkCuentaRs.getInt(1);
+            checkCuentaRs.close();
+            checkCuentaStmt.close();
+            
+            if (cuentaCount > 0) {
+                // En el improbable caso de que ya exista, generamos otro
+                numeroCuenta = String.valueOf(100000 + (int)(Math.random() * 900000));
+            }
+            
+            // Insertar nueva cuenta
+            System.out.println("Insertando nueva cuenta con número: " + numeroCuenta);
+            String insertCuenta = "INSERT INTO cuentas (numero_cuenta, cliente_id, saldo) VALUES (?, ?, ?)";
+            PreparedStatement stmtCuenta = conn.prepareStatement(insertCuenta);
+            stmtCuenta.setString(1, numeroCuenta);
+            stmtCuenta.setInt(2, clienteId);
+            stmtCuenta.setDouble(3, 0.0); // Saldo inicial
+            stmtCuenta.executeUpdate();
+            stmtCuenta.close();
+            
+            // Confirmar la transacción
+            System.out.println("Confirmando transacción...");
             conn.commit();
+            System.out.println("Transacción completada - Cuenta creada exitosamente");
+            
             return numeroCuenta;
             
         } catch (SQLException e) {
-            conn.rollback();
+            System.err.println("Error durante la creación de cuenta: " + e.getMessage());
+            
+            // Intentar hacer rollback
+            if (conn != null) {
+                try {
+                    System.out.println("Haciendo rollback de la transacción...");
+                    conn.rollback();
+                } catch (SQLException ex) {
+                    System.err.println("Error al hacer rollback: " + ex.getMessage());
+                }
+            }
+            
             throw e;
+            
         } finally {
-            conn.setAutoCommit(true);
+            // Restaurar el autoCommit a su estado original
+            if (conn != null && !conn.isClosed()) {
+                try {
+                    conn.setAutoCommit(autoCommitOriginal);
+                    System.out.println("AutoCommit restaurado a: " + autoCommitOriginal);
+                } catch (SQLException e) {
+                    System.err.println("Error al restaurar autoCommit: " + e.getMessage());
+                }
+            }
+            
+            // No cerramos la conexión aquí, la gestiona el singleton DBConexion
         }
     }
 
@@ -219,16 +312,6 @@ public class GestorCuentas {
         }
         return idSesion;
     }
-    /*
-    public void cerrarSesion(String correo) throws SQLException {
-        String update = "UPDATE clientes SET sesion_activa = false, id_sesion = NULL WHERE correo_electronico = ?";
-        try (Connection conn = DBConexion.getInstance().getConnection();
-             PreparedStatement stmt = conn.prepareStatement(update)) {
-            
-            stmt.setString(1, correo);
-            stmt.executeUpdate();
-        }
-    } */
 
     public void cerrarSesion(String correo, String idSesion) throws SQLException {
         String update = "UPDATE clientes SET sesion_activa = false, id_sesion = NULL WHERE correo_electronico = ? AND id_sesion = ?";

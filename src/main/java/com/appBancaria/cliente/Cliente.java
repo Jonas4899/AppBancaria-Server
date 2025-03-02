@@ -15,7 +15,8 @@ public class Cliente {
     private static final Gson gson = new Gson();
 
     public static void main(String[] args) {
-        testHistorialTransacciones();
+        crearCuenta("Juan Perez", 12345678, "juan.perez@example.com", "password123");
+        // testHistorialTransacciones();
     }
 
     private static void testHistorialTransacciones() {
@@ -25,6 +26,38 @@ public class Cliente {
         if (idSesion != null) {
             solicitarHistorialTransacciones(idSesion);
             logout(correo, idSesion);
+        }
+    }
+
+    private static void crearCuenta(String nombre, int identificacion, String correo, String contrasena) {
+        try (Socket socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
+             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+
+            // Crear el objeto SolicitudDTO
+            Map<String, Object> datos = new HashMap<>();
+            datos.put("nombre", nombre);
+            datos.put("identificacion", identificacion);
+            datos.put("correo", correo);
+            datos.put("contrasena", contrasena);
+
+            SolicitudDTO solicitud = new SolicitudDTO();
+            solicitud.setTipoOperacion("crear_cuenta");
+            solicitud.setDatos(datos);
+
+            // Convertir a JSON usando Gson
+            String jsonRequest = gson.toJson(solicitud);
+
+            // Enviar solicitud al servidor
+            System.out.println("Sending request: " + jsonRequest);
+            out.println(jsonRequest);
+
+            // Leer respuesta del servidor
+            String response = in.readLine();
+            System.out.println("Server response: " + response);
+
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
