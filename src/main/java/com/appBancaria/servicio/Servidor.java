@@ -511,8 +511,44 @@ public class Servidor {
         try {
             log("Stopping server...");
             running = false;
+            
+            // Cerrar todas las sesiones activas antes de detener el servidor
+            log("Cerrando sesiones de todos los clientes conectados...");
+            int sesionesTotales = 0;
+            int sesionesActivas = 0;
+            
+            for (ClienteConectado cliente : clientesConectados) {
+                sesionesTotales++;
+                if (cliente.isSesionActiva() && cliente.getCorreoUsuario() != null && cliente.getIdSesion() != null) {
+                    try {
+                        log("Cerrando sesión de: " + cliente.getInformacionCliente());
+                        gestorCuentas.cerrarSesion(cliente.getCorreoUsuario(), cliente.getIdSesion());
+                        sesionesActivas++;
+                        log("Sesión cerrada exitosamente para: " + cliente.getCorreoUsuario());
+                    } catch (SQLException e) {
+                        logError("Error al cerrar sesión durante apagado del servidor: " + e.getMessage());
+                    }
+                }
+                
+                // Cerrar el socket del cliente
+                try {
+                    Socket socket = cliente.getSocket();
+                    if (socket != null && !socket.isClosed()) {
+                        socket.close();
+                    }
+                } catch (IOException e) {
+                    logError("Error al cerrar socket de cliente durante apagado: " + e.getMessage());
+                }
+            }
+            
+            log("Total de conexiones: " + sesionesTotales + " - Sesiones activas cerradas: " + sesionesActivas);
+            clientesConectados.clear();
+            
+            // Cerrar el socket del servidor
             if (serverSocket != null) serverSocket.close();
-            DBConexion.getInstance().closeConnection();  // Close DB connection when server stops
+            
+            // Cerrar la conexión a la base de datos
+            DBConexion.getInstance().closeConnection();
             log("Database connection closed");
             log("Server stopped");
         } catch (IOException e) {
