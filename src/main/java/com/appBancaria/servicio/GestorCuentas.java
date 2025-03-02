@@ -13,6 +13,9 @@ import java.util.UUID;
 public class GestorCuentas {
     
     public double consultarSaldo(String numeroCuenta) throws SQLException {
+        // Limpiar prepared statements antes de comenzar
+        DBConexion.getInstance().cleanPreparedStatements();
+        
         String query = "SELECT saldo FROM cuentas WHERE numero_cuenta = ?";
         try (Connection conn = DBConexion.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -29,6 +32,9 @@ public class GestorCuentas {
     }
     
     public double consultarSaldo(int identificacion) throws SQLException {
+        // Limpiar prepared statements antes de comenzar
+        DBConexion.getInstance().cleanPreparedStatements();
+        
         String query = "SELECT saldo FROM cuentas WHERE cliente_id = (SELECT id FROM clientes WHERE numero_identificacion = ?)";
         try (Connection conn = DBConexion.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -46,6 +52,9 @@ public class GestorCuentas {
     
     public String crearCuenta(Cliente cliente) throws SQLException {
         System.out.println("Iniciando proceso de creación de cuenta para " + cliente.getNombre());
+        
+        // Limpiar prepared statements antes de comenzar
+        DBConexion.getInstance().cleanPreparedStatements();
         
         // Obtenemos una nueva conexión específicamente para esta operación
         Connection conn = null;
@@ -186,57 +195,67 @@ public class GestorCuentas {
         String insertTransaccion = "INSERT INTO transacciones (tipo_transaccion, monto, cuenta_origen_id, cuenta_destino_id) VALUES (?, ?, (SELECT id FROM cuentas WHERE numero_cuenta = ?), (SELECT id FROM cuentas WHERE numero_cuenta = ?))";
         Map<String, Object> resultado = new HashMap<>();
         
-        Connection conn = DBConexion.getInstance().getConnection();
+        Connection conn = null;
+        PreparedStatement stmtOrigen = null;
+        PreparedStatement stmtDestino = null;
+        PreparedStatement stmtUpdateDestino = null;
+        PreparedStatement stmtInsertTransaccion = null;
+        ResultSet rsOrigen = null;
+        ResultSet rsDestino = null;
+        
         try {
+            // Limpiar prepared statements antes de comenzar
+            DBConexion.getInstance().cleanPreparedStatements();
+            
+            conn = DBConexion.getInstance().getConnection();
             conn.setAutoCommit(false);
             
             // Obtener cuenta de origen usando el ID de sesión
             String numCuentaOrigen;
-            try (PreparedStatement stmtOrigen = conn.prepareStatement(queryOrigen)) {
-                stmtOrigen.setString(1, idSesion);
-                ResultSet rsOrigen = stmtOrigen.executeQuery();
-                if (!rsOrigen.next()) {
-                    throw new SQLException("No se encontró una cuenta asociada a la sesión activa");
-                }
-                numCuentaOrigen = rsOrigen.getString("numero_cuenta");
+            stmtOrigen = conn.prepareStatement(queryOrigen);
+            stmtOrigen.setString(1, idSesion);
+            rsOrigen = stmtOrigen.executeQuery();
+            if (!rsOrigen.next()) {
+                throw new SQLException("No se encontró una cuenta asociada a la sesión activa");
             }
+            numCuentaOrigen = rsOrigen.getString("numero_cuenta");
             
             // Verificar que la cuenta de destino exista
             double saldoAnterior = 0.0;
             double saldoNuevo = 0.0;
-            try (PreparedStatement stmtDestino = conn.prepareStatement(queryDestino)) {
-                stmtDestino.setString(1, numCuentaDestino);
-                ResultSet rsDestino = stmtDestino.executeQuery();
-                if (!rsDestino.next()) {
-                    throw new SQLException("Cuenta de destino no encontrada");
-                }
-                saldoAnterior = rsDestino.getDouble("saldo");
+            stmtDestino = conn.prepareStatement(queryDestino);
+            stmtDestino.setString(1, numCuentaDestino);
+            rsDestino = stmtDestino.executeQuery();
+            if (!rsDestino.next()) {
+                throw new SQLException("Cuenta de destino no encontrada");
             }
+            saldoAnterior = rsDestino.getDouble("saldo");
             
             // Actualizar el saldo de la cuenta de destino
-            try (PreparedStatement stmtUpdateDestino = conn.prepareStatement(updateDestino)) {
-                stmtUpdateDestino.setDouble(1, monto);
-                stmtUpdateDestino.setString(2, numCuentaDestino);
-                stmtUpdateDestino.executeUpdate();
-            }
+            stmtUpdateDestino = conn.prepareStatement(updateDestino);
+            stmtUpdateDestino.setDouble(1, monto);
+            stmtUpdateDestino.setString(2, numCuentaDestino);
+            stmtUpdateDestino.executeUpdate();
+            
+            // Cerrar el ResultSet y el PreparedStatement anteriores
+            if (rsDestino != null) rsDestino.close();
+            if (stmtDestino != null) stmtDestino.close();
             
             // Obtener el saldo actualizado
-            try (PreparedStatement stmtDestino = conn.prepareStatement(queryDestino)) {
-                stmtDestino.setString(1, numCuentaDestino);
-                ResultSet rsDestino = stmtDestino.executeQuery();
-                if (rsDestino.next()) {
-                    saldoNuevo = rsDestino.getDouble("saldo");
-                }
+            stmtDestino = conn.prepareStatement(queryDestino);
+            stmtDestino.setString(1, numCuentaDestino);
+            rsDestino = stmtDestino.executeQuery();
+            if (rsDestino.next()) {
+                saldoNuevo = rsDestino.getDouble("saldo");
             }
             
             // Insertar registro en la tabla de transacciones
-            try (PreparedStatement stmtInsertTransaccion = conn.prepareStatement(insertTransaccion)) {
-                stmtInsertTransaccion.setString(1, "consignacion");
-                stmtInsertTransaccion.setDouble(2, monto);
-                stmtInsertTransaccion.setString(3, numCuentaOrigen);
-                stmtInsertTransaccion.setString(4, numCuentaDestino);
-                stmtInsertTransaccion.executeUpdate();
-            }
+            stmtInsertTransaccion = conn.prepareStatement(insertTransaccion);
+            stmtInsertTransaccion.setString(1, "consignacion");
+            stmtInsertTransaccion.setDouble(2, monto);
+            stmtInsertTransaccion.setString(3, numCuentaOrigen);
+            stmtInsertTransaccion.setString(4, numCuentaDestino);
+            stmtInsertTransaccion.executeUpdate();
             
             conn.commit();
             
@@ -251,12 +270,33 @@ public class GestorCuentas {
             
             return resultado;
         } catch (SQLException e) {
-            conn.rollback();
+            if (conn != null) {
+                try {
+                    conn.rollback();
+                } catch (SQLException ex) {
+                    System.err.println("Error durante rollback: " + ex.getMessage());
+                }
+            }
             resultado.put("exito", false);
             resultado.put("mensaje", "Error en la consignación: " + e.getMessage());
             throw e;
         } finally {
-            conn.setAutoCommit(true);
+            // Cerrar todos los recursos en orden inverso
+            if (rsDestino != null) try { rsDestino.close(); } catch (SQLException e) { }
+            if (rsOrigen != null) try { rsOrigen.close(); } catch (SQLException e) { }
+            if (stmtInsertTransaccion != null) try { stmtInsertTransaccion.close(); } catch (SQLException e) { }
+            if (stmtUpdateDestino != null) try { stmtUpdateDestino.close(); } catch (SQLException e) { }
+            if (stmtDestino != null) try { stmtDestino.close(); } catch (SQLException e) { }
+            if (stmtOrigen != null) try { stmtOrigen.close(); } catch (SQLException e) { }
+            
+            // Restaurar autoCommit
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                } catch (SQLException e) {
+                    System.err.println("Error restaurando autoCommit: " + e.getMessage());
+                }
+            }
         }
     }
     
@@ -282,6 +322,9 @@ public class GestorCuentas {
     }
 
     public String autenticarUsuario(String correo, String contrasena) throws SQLException {
+        // Limpiar prepared statements antes de comenzar
+        DBConexion.getInstance().cleanPreparedStatements();
+        
         String query = "SELECT id FROM clientes WHERE correo_electronico = ? AND contrasena = ?";
         try (Connection conn = DBConexion.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -293,6 +336,10 @@ public class GestorCuentas {
             if (rs.next()) {
                 int clienteId = rs.getInt("id");
                 String idSesion = iniciarSesion(clienteId);
+                
+                // Limpiar prepared statements después de la autenticación exitosa
+                DBConexion.getInstance().cleanPreparedStatements();
+                
                 return idSesion;
             } else {
                 return null;
@@ -301,6 +348,9 @@ public class GestorCuentas {
     }
 
     private String iniciarSesion(int clienteId) throws SQLException {
+        // Limpiar prepared statements antes de comenzar
+        DBConexion.getInstance().cleanPreparedStatements();
+        
         String update = "UPDATE clientes SET sesion_activa = true, id_sesion = ? WHERE id = ?";
         String idSesion = UUID.randomUUID().toString();
         try (Connection conn = DBConexion.getInstance().getConnection();
@@ -314,6 +364,9 @@ public class GestorCuentas {
     }
 
     public void cerrarSesion(String correo, String idSesion) throws SQLException {
+        // Limpiar prepared statements antes de comenzar
+        DBConexion.getInstance().cleanPreparedStatements();
+        
         String update = "UPDATE clientes SET sesion_activa = false, id_sesion = NULL WHERE correo_electronico = ? AND id_sesion = ?";
         try (Connection conn = DBConexion.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(update)) {
@@ -329,6 +382,9 @@ public class GestorCuentas {
     }
 
     public boolean verificarSesionActiva(String correo) throws SQLException {
+        // Limpiar prepared statements antes de comenzar
+        DBConexion.getInstance().cleanPreparedStatements();
+        
         String query = "SELECT sesion_activa FROM clientes WHERE correo_electronico = ?";
         try (Connection conn = DBConexion.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -345,6 +401,9 @@ public class GestorCuentas {
     }
 
     public Map<String, Object> obtenerHistorialTransacciones(String idSesion) throws SQLException {
+        // Limpiar prepared statements antes de comenzar
+        DBConexion.getInstance().cleanPreparedStatements();
+        
         String queryCliente = "SELECT id FROM clientes WHERE id_sesion = ?";
         String queryTransacciones = "SELECT t.tipo_transaccion, t.fecha_hora, t.monto, c.numero_cuenta AS cuenta_origen, " +
                                     "c2.numero_cuenta AS cuenta_destino, cl.numero_identificacion AS identificacion_origen " +
@@ -392,6 +451,9 @@ public class GestorCuentas {
      * @throws SQLException si ocurre un error con la base de datos
      */
     public Map<String, Object> obtenerInformacionCliente(String idSesion) throws SQLException {
+        // Limpiar prepared statements antes de comenzar
+        DBConexion.getInstance().cleanPreparedStatements();
+        
         String query = "SELECT cl.id, cl.nombre_completo, cl.correo_electronico, cl.numero_identificacion, " +
                       "c.numero_cuenta, c.saldo " +
                       "FROM clientes cl " +
@@ -428,8 +490,13 @@ public class GestorCuentas {
      * @throws SQLException si ocurre un error con la base de datos
      */
     public Map<String, Object> autenticarYObtenerInformacionCliente(String correo, String contrasena) throws SQLException {
+        // Limpiar prepared statements antes de comenzar
+        DBConexion.getInstance().cleanPreparedStatements();
+        
         String idSesion = autenticarUsuario(correo, contrasena);
         if (idSesion != null) {
+            // Limpiar prepared statements entre operaciones
+            DBConexion.getInstance().cleanPreparedStatements();
             return obtenerInformacionCliente(idSesion);
         } else {
             return null;

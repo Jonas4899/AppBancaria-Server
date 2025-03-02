@@ -4,6 +4,7 @@ import io.github.cdimascio.dotenv.Dotenv;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.sql.Statement;
 
 public class DBConexion {
     private static DBConexion instance;
@@ -51,6 +52,24 @@ public class DBConexion {
         }
         
         return connection;
+    }
+    
+    /**
+     * Limpia los prepared statements de la conexión actual
+     * Útil para evitar errores como "prepared statement S_1 already exists"
+     */
+    public synchronized void cleanPreparedStatements() {
+        if (connection != null) {
+            try {
+                try (Statement stmt = connection.createStatement()) {
+                    // Este comando de PostgreSQL limpia todos los prepared statements
+                    stmt.execute("DEALLOCATE ALL");
+                }
+                System.out.println("Prepared statements limpiados correctamente");
+            } catch (SQLException e) {
+                System.err.println("Error al limpiar prepared statements: " + e.getMessage());
+            }
+        }
     }
     
     /**
