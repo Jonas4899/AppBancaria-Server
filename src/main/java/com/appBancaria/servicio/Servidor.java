@@ -41,12 +41,18 @@ public class Servidor {
         private String direccionIP;
         private String informacionCliente;
         private Date horaConexion;
+        private String idSesion;
+        private String correoUsuario;
+        private boolean sesionActiva;
         
         public ClienteConectado(Socket socket) {
             this.socket = socket;
             this.direccionIP = socket.getInetAddress().getHostAddress();
             this.horaConexion = new Date();
             this.informacionCliente = "Cliente sin identificar";
+            this.idSesion = null;
+            this.correoUsuario = null;
+            this.sesionActiva = false;
         }
         
         public Socket getSocket() {
@@ -67,6 +73,30 @@ public class Servidor {
         
         public void setInformacionCliente(String informacionCliente) {
             this.informacionCliente = informacionCliente;
+        }
+        
+        public String getIdSesion() {
+            return idSesion;
+        }
+        
+        public void setIdSesion(String idSesion) {
+            this.idSesion = idSesion;
+        }
+        
+        public String getCorreoUsuario() {
+            return correoUsuario;
+        }
+        
+        public void setCorreoUsuario(String correoUsuario) {
+            this.correoUsuario = correoUsuario;
+        }
+        
+        public boolean isSesionActiva() {
+            return sesionActiva;
+        }
+        
+        public void setSesionActiva(boolean sesionActiva) {
+            this.sesionActiva = sesionActiva;
         }
         
         @Override
@@ -94,6 +124,19 @@ public class Servidor {
             // Verificar si el socket está cerrado o no está conectado
             if (socket.isClosed() || !socket.isConnected() || socket.isInputShutdown()) {
                 log("Detectado cliente desconectado durante verificación: " + cliente.getDireccionIP());
+                
+                // Verificar si el cliente tenía una sesión activa
+                if (cliente.isSesionActiva() && cliente.getCorreoUsuario() != null && cliente.getIdSesion() != null) {
+                    try {
+                        // Cerrar la sesión en la base de datos
+                        log("Cerrando sesión de usuario desconectado: " + cliente.getCorreoUsuario());
+                        gestorCuentas.cerrarSesion(cliente.getCorreoUsuario(), cliente.getIdSesion());
+                        log("Sesión cerrada exitosamente para: " + cliente.getCorreoUsuario());
+                    } catch (SQLException e) {
+                        logError("Error al cerrar sesión de cliente desconectado: " + e.getMessage());
+                    }
+                }
+                
                 clientesConectados.remove(cliente);
                 log("Cliente removido de la lista en verificarClientes: " + cliente.getDireccionIP());
                 try {
@@ -233,6 +276,17 @@ public class Servidor {
                 logError("Detalles: " + e.getMessage());
             } finally {
                 try {
+                    // Cerrar sesión si el cliente tenía una sesión activa
+                    if (clienteConectado.isSesionActiva() && clienteConectado.getCorreoUsuario() != null && clienteConectado.getIdSesion() != null) {
+                        try {
+                            log("Cerrando sesión de cliente desconectado: " + clienteConectado.getCorreoUsuario());
+                            gestorCuentas.cerrarSesion(clienteConectado.getCorreoUsuario(), clienteConectado.getIdSesion());
+                            log("Sesión cerrada exitosamente para: " + clienteConectado.getCorreoUsuario());
+                        } catch (SQLException ex) {
+                            logError("Error al cerrar sesión en cierre de cliente: " + ex.getMessage());
+                        }
+                    }
+                    
                     // Eliminar el cliente de la lista cuando se desconecta
                     clientesConectados.remove(clienteConectado);
                     log("Cliente removido de la lista de conexiones activas: " + clienteConectado.getDireccionIP());
@@ -375,7 +429,13 @@ public class Servidor {
                             if (datosCliente != null) {
                                 // Actualizar la información del cliente en el objeto ClienteConectado
                                 String nombreCliente = (String) datosCliente.get("nombre");
+                                String idSesion = (String) datosCliente.get("idSesion");
+                                
+                                // Guardar información de sesión en el ClienteConectado
                                 clienteConectado.setInformacionCliente(nombreCliente + " (" + correo + ")");
+                                clienteConectado.setCorreoUsuario(correo);
+                                clienteConectado.setIdSesion(idSesion);
+                                clienteConectado.setSesionActiva(true);
                                 
                                 respuesta.setCodigo(200);
                                 respuesta.setMensaje("Autenticación exitosa");
@@ -399,6 +459,8 @@ public class Servidor {
                         
                         // Actualizar la información del cliente cuando cierra sesión
                         clienteConectado.setInformacionCliente("Cliente sin identificar (sesión cerrada)");
+                        clienteConectado.setSesionActiva(false);
+                        clienteConectado.setIdSesion(null);
                         
                         respuesta.setCodigo(200);
                         respuesta.setMensaje("Sesión cerrada exitosamente");
