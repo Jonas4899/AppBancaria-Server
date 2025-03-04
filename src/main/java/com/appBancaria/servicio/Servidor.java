@@ -341,29 +341,63 @@ public class Servidor {
                         }
                         
                         String sessionId = (String) tokenInfo.get("sessionId");
+                        Map<String, Object> infoCliente = (Map<String, Object>) tokenInfo.get("infoCliente");
                         
-                        // Ahora consultamos el saldo usando el sessionId extraído del token
-                        double saldo;
+                        // Extraer la información del cliente autenticado para verificación
+                        String clienteNumeroCuenta = (String) infoCliente.get("numeroCuenta");
+                        String clienteIdentificacion = (String) infoCliente.get("identificacion");
+                        
+                        // Verificar que el usuario solo pueda consultar sus propias cuentas
                         if (solicitud.getDatos().containsKey("numeroCuenta")) {
                             String numeroCuenta = (String) solicitud.getDatos().get("numeroCuenta");
                             log("Processing saldo request for account: " + numeroCuenta);
-                            saldo = gestorCuentas.consultarSaldo(numeroCuenta);
+                            
+                            // Verificar que el número de cuenta coincida con el del usuario autenticado
+                            if (!numeroCuenta.equals(clienteNumeroCuenta)) {
+                                respuesta.setCodigo(403);
+                                respuesta.setMensaje("No tienes permiso para consultar esta cuenta");
+                                log("Intento de consulta de cuenta ajena: " + numeroCuenta + " por usuario con cuenta: " + clienteNumeroCuenta);
+                                return respuesta;
+                            }
+                            
+                            // Consultar saldo solo si la cuenta pertenece al usuario
+                            double saldo = gestorCuentas.consultarSaldo(numeroCuenta);
                             respuesta.setCodigo(200);
                             respuesta.setMensaje("Consulta de saldo exitosa");
                             Map<String, Object> datos = new HashMap<>();
                             datos.put("saldo", saldo);
                             respuesta.setDatos(datos);
                             log("Saldo request successful for account: " + numeroCuenta);
+                            
                         } else if (solicitud.getDatos().containsKey("identificacion")) {
                             int identificacion = ((Number) solicitud.getDatos().get("identificacion")).intValue();
                             log("Processing saldo request for ID: " + identificacion);
-                            saldo = gestorCuentas.consultarSaldo(identificacion);
+                            
+                            // Verificar que la identificación coincida con la del usuario autenticado
+                            if (!String.valueOf(identificacion).equals(clienteIdentificacion)) {
+                                respuesta.setCodigo(403);
+                                respuesta.setMensaje("No tienes permiso para consultar esta identificación");
+                                log("Intento de consulta de identificación ajena: " + identificacion + " por usuario con identificación: " + clienteIdentificacion);
+                                return respuesta;
+                            }
+                            
+                            // Consultar saldo solo si la identificación pertenece al usuario
+                            double saldo = gestorCuentas.consultarSaldo(identificacion);
                             respuesta.setCodigo(200);
                             respuesta.setMensaje("Consulta de saldo exitosa");
                             Map<String, Object> datos = new HashMap<>();
                             datos.put("saldo", saldo);
                             respuesta.setDatos(datos);
                             log("Saldo request successful for ID: " + identificacion);
+                        } else {
+                            // Si no se proporciona ni número de cuenta ni identificación, consultar usando la información del token
+                            double saldo = gestorCuentas.consultarSaldo(clienteNumeroCuenta);
+                            respuesta.setCodigo(200);
+                            respuesta.setMensaje("Consulta de saldo exitosa");
+                            Map<String, Object> datos = new HashMap<>();
+                            datos.put("saldo", saldo);
+                            respuesta.setDatos(datos);
+                            log("Saldo request successful using token information for account: " + clienteNumeroCuenta);
                         }
                     } catch (Exception e) {
                         respuesta.setCodigo(400);
