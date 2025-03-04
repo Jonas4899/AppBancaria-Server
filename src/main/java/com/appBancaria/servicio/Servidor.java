@@ -43,7 +43,6 @@ public class Servidor {
         private Date horaConexion;
         private String idSesion;
         private String correoUsuario;
-        private boolean sesionActiva;
         
         public ClienteConectado(Socket socket) {
             this.socket = socket;
@@ -52,7 +51,6 @@ public class Servidor {
             this.informacionCliente = "Cliente sin identificar";
             this.idSesion = null;
             this.correoUsuario = null;
-            this.sesionActiva = false;
         }
         
         public Socket getSocket() {
@@ -92,11 +90,8 @@ public class Servidor {
         }
         
         public boolean isSesionActiva() {
-            return sesionActiva;
-        }
-        
-        public void setSesionActiva(boolean sesionActiva) {
-            this.sesionActiva = sesionActiva;
+            // Ahora determinamos si hay una sesión activa basándonos en si hay un idSesion
+            return idSesion != null;
         }
         
         @Override
@@ -334,6 +329,20 @@ public class Servidor {
 
                 case "consulta_saldo":
                     try {
+                        // Verificar el token JWT primero
+                        String token = (String) solicitud.getDatos().get("token");
+                        Map<String, Object> tokenInfo = validarYObtenerInfoToken(token);
+                        
+                        if (tokenInfo == null) {
+                            respuesta.setCodigo(401);
+                            respuesta.setMensaje("Token inválido, expirado o sesión no coincidente");
+                            log("Intento de consulta de saldo con token inválido");
+                            return respuesta;
+                        }
+                        
+                        String sessionId = (String) tokenInfo.get("sessionId");
+                        
+                        // Ahora consultamos el saldo usando el sessionId extraído del token
                         double saldo;
                         if (solicitud.getDatos().containsKey("numeroCuenta")) {
                             String numeroCuenta = (String) solicitud.getDatos().get("numeroCuenta");
@@ -393,12 +402,25 @@ public class Servidor {
                 case "consigna_cuenta":
                     try {
                         Map<String, Object> datosConsignacion = solicitud.getDatos();
-                        String idSesion = (String) datosConsignacion.get("idSesion");
+                        
+                        // Verificar el token JWT
+                        String token = (String) datosConsignacion.get("token");
+                        Map<String, Object> tokenInfo = validarYObtenerInfoToken(token);
+                        
+                        if (tokenInfo == null) {
+                            respuesta.setCodigo(401);
+                            respuesta.setMensaje("Token inválido, expirado o sesión no coincidente");
+                            log("Intento de consignación con token inválido");
+                            return respuesta;
+                        }
+                        
+                        String sessionId = (String) tokenInfo.get("sessionId");
                         String numeroCuentaDestino = (String) datosConsignacion.get("numeroCuentaDestino");
                         double monto = ((Number) datosConsignacion.get("monto")).doubleValue();
 
+                        // Usar el sessionId extraído del token para realizar la consignación
                         Map<String, Object> resultadoConsignacion = gestorCuentas.consignarCuenta(
-                            idSesion, 
+                            sessionId, 
                             numeroCuentaDestino, 
                             monto
                         );
@@ -406,12 +428,14 @@ public class Servidor {
                         respuesta.setCodigo(200);
                         respuesta.setMensaje("Consignación procesada");
                         respuesta.setDatos(resultadoConsignacion);
+                        log("Consignación exitosa desde sessionId: " + sessionId);
                     } catch (Exception e) {
                         respuesta.setCodigo(400);
                         respuesta.setMensaje("Error en la consignación: " + e.getMessage());
                         Map<String, Object> datosError = new HashMap<>();
                         datosError.put("error", e.getMessage());
                         respuesta.setDatos(datosError);
+                        logError("Error en consignación: " + e.getMessage());
                     }
                     break;
 
@@ -420,79 +444,159 @@ public class Servidor {
                         String correo = (String) solicitud.getDatos().get("correo");
                         String contrasena = (String) solicitud.getDatos().get("contrasena");
 
-                        if (gestorCuentas.verificarSesionActiva(correo)) {
-                            respuesta.setCodigo(400);
-                            respuesta.setMensaje("Usuario ya tiene una sesión activa");
-                        } else {
-                            // Usar el nuevo método para obtener toda la información del cliente
-                            Map<String, Object> datosCliente = gestorCuentas.autenticarYObtenerInformacionCliente(correo, contrasena);
-                            if (datosCliente != null) {
-                                // Actualizar la información del cliente en el objeto ClienteConectado
-                                String nombreCliente = (String) datosCliente.get("nombre");
-                                String idSesion = (String) datosCliente.get("idSesion");
-                                
-                                // Guardar información de sesión en el ClienteConectado
-                                clienteConectado.setInformacionCliente(nombreCliente + " (" + correo + ")");
-                                clienteConectado.setCorreoUsuario(correo);
-                                clienteConectado.setIdSesion(idSesion);
-                                clienteConectado.setSesionActiva(true);
-                                
-                                respuesta.setCodigo(200);
-                                respuesta.setMensaje("Autenticación exitosa");
-                                respuesta.setDatos(datosCliente);
-                            } else {
-                                respuesta.setCodigo(401);
-                                respuesta.setMensaje("Correo o contraseña incorrectos");
+                        // Ya no bloqueamos el login si hay una sesión activa
+                        // Simplemente autenticamos y generamos un nuevo token
+                        
+                        // Usar el método de autenticación con JWT
+                        Map<String, Object> infoCliente = gestorCuentas.autenticarYObtenerInformacionCliente(correo, contrasena);
+                        if (infoCliente != null) {
+                            // Actualizar la información del cliente en el objeto ClienteConectado
+                            String nombreCliente = (String) infoCliente.get("nombre");
+                            String idSesion = (String) infoCliente.get("idSesion");
+                            
+                            // Guardar información de sesión en el ClienteConectado
+                            clienteConectado.setInformacionCliente(nombreCliente + " (" + correo + ")");
+                            clienteConectado.setCorreoUsuario(correo);
+                            clienteConectado.setIdSesion(idSesion);
+                            
+                            respuesta.setCodigo(200);
+                            respuesta.setMensaje("Autenticación exitosa");
+                            respuesta.setDatos(infoCliente);
+                            
+                            log("Usuario autenticado exitosamente con JWT: " + nombreCliente);
+                            
+                            // Si había una sesión activa anterior, ha sido sobrescrita automáticamente
+                            // en el método actualizarIdSesion de GestorCuentas
+                            boolean teniaSessionActiva = gestorCuentas.verificarSesionActiva(correo);
+                            if (teniaSessionActiva) {
+                                log("Se ha invalidado una sesión anterior del usuario: " + correo);
                             }
+                        } else {
+                            respuesta.setCodigo(401);
+                            respuesta.setMensaje("Correo o contraseña incorrectos");
+                            log("Intento de autenticación fallido para: " + correo);
                         }
                     } catch (Exception e) {
                         respuesta.setCodigo(500);
                         respuesta.setMensaje("Error en la autenticación: " + e.getMessage());
+                        logError("Error durante la autenticación: " + e.getMessage());
                     }
                     break;
 
                 case "logout":
                     try {
                         String correo = (String) solicitud.getDatos().get("correo");
-                        String idSesion = (String) solicitud.getDatos().get("idSesion");
-                        gestorCuentas.cerrarSesion(correo, idSesion);
+                        
+                        // Verificar el token JWT
+                        String token = (String) solicitud.getDatos().get("token");
+                        Map<String, Object> tokenInfo = validarYObtenerInfoToken(token);
+                        
+                        if (tokenInfo == null) {
+                            respuesta.setCodigo(401);
+                            respuesta.setMensaje("Token inválido, expirado o sesión no coincidente");
+                            log("Intento de logout con token inválido");
+                            return respuesta;
+                        }
+                        
+                        String sessionId = (String) tokenInfo.get("sessionId");
+                        
+                        // Cerrar sesión usando el correo y sessionId
+                        gestorCuentas.cerrarSesion(correo, sessionId);
                         
                         // Actualizar la información del cliente cuando cierra sesión
                         clienteConectado.setInformacionCliente("Cliente sin identificar (sesión cerrada)");
-                        clienteConectado.setSesionActiva(false);
+                        
                         clienteConectado.setIdSesion(null);
                         
                         respuesta.setCodigo(200);
                         respuesta.setMensaje("Sesión cerrada exitosamente");
+                        log("Sesión cerrada para usuario: " + correo);
                     } catch (Exception e) {
                         respuesta.setCodigo(500);
                         respuesta.setMensaje("Error al cerrar sesión: " + e.getMessage());
+                        logError("Error al cerrar sesión: " + e.getMessage());
                     }
                     break;
 
                 case "historial_transacciones":
                     try {
-                        String idSesion = (String) solicitud.getDatos().get("idSesion");
-                        Map<String, Object> historial = gestorCuentas.obtenerHistorialTransacciones(idSesion);
+                        // Verificar el token JWT
+                        String token = (String) solicitud.getDatos().get("token");
+                        Map<String, Object> tokenInfo = validarYObtenerInfoToken(token);
+                        
+                        if (tokenInfo == null) {
+                            respuesta.setCodigo(401);
+                            respuesta.setMensaje("Token inválido, expirado o sesión no coincidente");
+                            log("Intento de obtener historial con token inválido");
+                            return respuesta;
+                        }
+                        
+                        String sessionId = (String) tokenInfo.get("sessionId");
+                        
+                        // Usar el sessionId extraído del token
+                        Map<String, Object> historial = gestorCuentas.obtenerHistorialTransacciones(sessionId);
                         respuesta.setCodigo(200);
                         respuesta.setMensaje("Historial de transacciones obtenido exitosamente");
                         respuesta.setDatos(historial);
+                        log("Historial de transacciones obtenido para sessionId: " + sessionId);
                     } catch (Exception e) {
                         respuesta.setCodigo(500);
                         respuesta.setMensaje("Error al obtener historial de transacciones: " + e.getMessage());
+                        logError("Error al obtener historial: " + e.getMessage());
                     }
                     break;
 
                 case "obtener_informacion_cliente":
                     try {
-                        String idSesion = (String) solicitud.getDatos().get("idSesion");
-                        Map<String, Object> informacionCliente = gestorCuentas.obtenerInformacionCliente(idSesion);
+                        // Verificar el token JWT
+                        String token = (String) solicitud.getDatos().get("token");
+                        Map<String, Object> tokenInfo = validarYObtenerInfoToken(token);
+                        
+                        if (tokenInfo == null) {
+                            respuesta.setCodigo(401);
+                            respuesta.setMensaje("Token inválido, expirado o sesión no coincidente");
+                            log("Intento de obtener información de cliente con token inválido");
+                            return respuesta;
+                        }
+                        
+                        String sessionId = (String) tokenInfo.get("sessionId");
+                        
+                        // Usar el sessionId extraído del token
+                        Map<String, Object> informacionCliente = gestorCuentas.obtenerInformacionCliente(sessionId);
                         respuesta.setCodigo(200);
                         respuesta.setMensaje("Información del cliente obtenida exitosamente");
                         respuesta.setDatos(informacionCliente);
+                        log("Información de cliente obtenida para sessionId: " + sessionId);
                     } catch (Exception e) {
                         respuesta.setCodigo(500);
                         respuesta.setMensaje("Error al obtener información del cliente: " + e.getMessage());
+                        logError("Error al obtener información del cliente: " + e.getMessage());
+                    }
+                    break;
+
+                case "validar_token":
+                    try {
+                        String token = (String) solicitud.getDatos().get("token");
+                        Map<String, Object> tokenInfo = validarYObtenerInfoToken(token);
+                        
+                        if (tokenInfo != null) {
+                            String sessionId = (String) tokenInfo.get("sessionId");
+                            // Información del cliente ya se obtuvo en validarYObtenerInfoToken()
+                            Map<String, Object> infoCliente = (Map<String, Object>) tokenInfo.get("infoCliente");
+                            
+                            respuesta.setCodigo(200);
+                            respuesta.setMensaje("Token válido");
+                            respuesta.setDatos(infoCliente);
+                            log("Token JWT validado exitosamente");
+                        } else {
+                            respuesta.setCodigo(401);
+                            respuesta.setMensaje("Token inválido o expirado");
+                            log("Intento de validar token JWT inválido");
+                        }
+                    } catch (Exception e) {
+                        respuesta.setCodigo(500);
+                        respuesta.setMensaje("Error al validar token: " + e.getMessage());
+                        logError("Error al validar token JWT: " + e.getMessage());
                     }
                     break;
 
@@ -512,23 +616,12 @@ public class Servidor {
             log("Stopping server...");
             running = false;
             
-            // Cerrar todas las sesiones activas antes de detener el servidor
-            log("Cerrando sesiones de todos los clientes conectados...");
+            // Ya no cerraremos las sesiones activas en la base de datos
+            log("Cerrando conexiones de clientes...");
             int sesionesTotales = 0;
-            int sesionesActivas = 0;
             
             for (ClienteConectado cliente : clientesConectados) {
                 sesionesTotales++;
-                if (cliente.isSesionActiva() && cliente.getCorreoUsuario() != null && cliente.getIdSesion() != null) {
-                    try {
-                        log("Cerrando sesión de: " + cliente.getInformacionCliente());
-                        gestorCuentas.cerrarSesion(cliente.getCorreoUsuario(), cliente.getIdSesion());
-                        sesionesActivas++;
-                        log("Sesión cerrada exitosamente para: " + cliente.getCorreoUsuario());
-                    } catch (SQLException e) {
-                        logError("Error al cerrar sesión durante apagado del servidor: " + e.getMessage());
-                    }
-                }
                 
                 // Cerrar el socket del cliente
                 try {
@@ -541,7 +634,7 @@ public class Servidor {
                 }
             }
             
-            log("Total de conexiones: " + sesionesTotales + " - Sesiones activas cerradas: " + sesionesActivas);
+            log("Total de conexiones: " + sesionesTotales);
             clientesConectados.clear();
             
             // Cerrar el socket del servidor
@@ -566,5 +659,51 @@ public class Servidor {
     private void logError(String message) {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         System.err.println("[" + sdf.format(new Date()) + "] ERROR: " + message);
+    }
+
+    /**
+     * Valida un token JWT y obtiene la información del token y del cliente asociado
+     * @param token El token JWT a validar
+     * @return Un mapa con la información del token y del cliente, o null si el token es inválido
+     */
+    private Map<String, Object> validarYObtenerInfoToken(String token) {
+        try {
+            if (token == null || token.isEmpty()) {
+                logError("Token JWT nulo o vacío");
+                return null;
+            }
+            
+            // Validar el token con JWTUtil (verifica firma y expiración)
+            Map<String, Object> tokenInfo = JWTUtil.validarToken(token);
+            
+            if (tokenInfo == null) {
+                logError("Token JWT inválido o expirado");
+                return null;
+            }
+            
+            // Extraer el sessionId del token
+            String sessionId = (String) tokenInfo.get("sessionId");
+            
+            try {
+                // Verificar que el sessionId existe en la base de datos (coincidencia con id_sesion)
+                Map<String, Object> infoCliente = gestorCuentas.obtenerInformacionCliente(sessionId);
+                
+                if (infoCliente == null) {
+                    logError("No se encontró una sesión activa para el sessionId: " + sessionId);
+                    return null;
+                }
+                
+                // Si todo está correcto, agregar la información del cliente al resultado
+                tokenInfo.put("infoCliente", infoCliente);
+                
+                return tokenInfo;
+            } catch (SQLException e) {
+                logError("Error al validar el sessionId: " + e.getMessage());
+                return null;
+            }
+        } catch (Exception e) {
+            logError("Error al validar el token JWT: " + e.getMessage());
+            return null;
+        }
     }
 }

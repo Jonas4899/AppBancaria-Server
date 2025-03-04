@@ -321,7 +321,14 @@ public class GestorCuentas {
         return numeroCuenta;
     }
 
-    public String autenticarUsuario(String correo, String contrasena) throws SQLException {
+    /**
+     * Autentica a un usuario y genera un token JWT si las credenciales son correctas
+     * @param correo Correo del usuario
+     * @param contrasena Contraseña del usuario
+     * @return Mapa con el token JWT y otros datos de sesión, o null si la autenticación falla
+     * @throws SQLException si ocurre un error con la base de datos
+     */
+    public Map<String, Object> autenticarUsuario(String correo, String contrasena) throws SQLException {
         // Limpiar prepared statements antes de comenzar
         DBConexion.getInstance().cleanPreparedStatements();
         
@@ -335,39 +342,56 @@ public class GestorCuentas {
             
             if (rs.next()) {
                 int clienteId = rs.getInt("id");
-                String idSesion = iniciarSesion(clienteId);
+                
+                // Generar JWT y sessionId
+                Map<String, String> tokenInfo = JWTUtil.generarToken(clienteId);
+                String jwt = tokenInfo.get("token");
+                String sessionId = tokenInfo.get("sessionId");
+                
+                // Actualizar el id_sesion en la base de datos
+                actualizarIdSesion(clienteId, sessionId);
+                
+                // Crear respuesta con token JWT
+                Map<String, Object> respuesta = new HashMap<>();
+                respuesta.put("idUsuario", clienteId);
+                respuesta.put("token", jwt);
+                respuesta.put("idSesion", sessionId);
                 
                 // Limpiar prepared statements después de la autenticación exitosa
                 DBConexion.getInstance().cleanPreparedStatements();
                 
-                return idSesion;
+                return respuesta;
             } else {
                 return null;
             }
         }
     }
 
-    private String iniciarSesion(int clienteId) throws SQLException {
+    /**
+     * Actualiza el id_sesion de un cliente en la base de datos
+     * @param clienteId ID del cliente
+     * @param sessionId ID de sesión
+     * @throws SQLException si ocurre un error con la base de datos
+     */
+    private void actualizarIdSesion(int clienteId, String sessionId) throws SQLException {
         // Limpiar prepared statements antes de comenzar
         DBConexion.getInstance().cleanPreparedStatements();
         
-        String update = "UPDATE clientes SET sesion_activa = true, id_sesion = ? WHERE id = ?";
-        String idSesion = UUID.randomUUID().toString();
+        String update = "UPDATE clientes SET id_sesion = ? WHERE id = ?";
         try (Connection conn = DBConexion.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(update)) {
             
-            stmt.setString(1, idSesion);
+            stmt.setString(1, sessionId);
             stmt.setInt(2, clienteId);
             stmt.executeUpdate();
         }
-        return idSesion;
     }
 
     public void cerrarSesion(String correo, String idSesion) throws SQLException {
         // Limpiar prepared statements antes de comenzar
         DBConexion.getInstance().cleanPreparedStatements();
         
-        String update = "UPDATE clientes SET sesion_activa = false, id_sesion = NULL WHERE correo_electronico = ? AND id_sesion = ?";
+        String update = "UPDATE clientes SET id_sesion = NULL WHERE correo_electronico = ? AND id_sesion = ?";
         try (Connection conn = DBConexion.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(update)) {
             
@@ -385,7 +409,7 @@ public class GestorCuentas {
         // Limpiar prepared statements antes de comenzar
         DBConexion.getInstance().cleanPreparedStatements();
         
-        String query = "SELECT sesion_activa FROM clientes WHERE correo_electronico = ?";
+        String query = "SELECT id_sesion FROM clientes WHERE correo_electronico = ?";
         try (Connection conn = DBConexion.getInstance().getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
             
@@ -393,7 +417,8 @@ public class GestorCuentas {
             ResultSet rs = stmt.executeQuery();
             
             if (rs.next()) {
-                return rs.getBoolean("sesion_activa");
+                // Si id_sesion no es null, entonces hay una sesión activa
+                return rs.getString("id_sesion") != null;
             } else {
                 return false;
             }
@@ -493,11 +518,18 @@ public class GestorCuentas {
         // Limpiar prepared statements antes de comenzar
         DBConexion.getInstance().cleanPreparedStatements();
         
-        String idSesion = autenticarUsuario(correo, contrasena);
-        if (idSesion != null) {
+        Map<String, Object> infoAutenticacion = autenticarUsuario(correo, contrasena);
+        if (infoAutenticacion != null) {
             // Limpiar prepared statements entre operaciones
             DBConexion.getInstance().cleanPreparedStatements();
-            return obtenerInformacionCliente(idSesion);
+            
+            String idSesion = (String) infoAutenticacion.get("idSesion");
+            Map<String, Object> infoCliente = obtenerInformacionCliente(idSesion);
+            
+            // Agregar el token JWT a la información del cliente
+            infoCliente.put("token", infoAutenticacion.get("token"));
+            
+            return infoCliente;
         } else {
             return null;
         }
