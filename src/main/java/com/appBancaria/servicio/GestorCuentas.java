@@ -436,7 +436,8 @@ public class GestorCuentas {
                                     "JOIN cuentas c ON t.cuenta_origen_id = c.id " +
                                     "JOIN cuentas c2 ON t.cuenta_destino_id = c2.id " +
                                     "JOIN clientes cl ON c.cliente_id = cl.id " +
-                                    "WHERE c2.cliente_id = ?";
+                                    "WHERE c2.cliente_id = ?" +
+                                    "ORDER BY t.fecha_hora ASC";
         Map<String, Object> historial = new HashMap<>();
         
         try (Connection conn = DBConexion.getInstance().getConnection();
