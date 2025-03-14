@@ -1,6 +1,7 @@
 package com.appBancaria;
 
 import com.appBancaria.servicio.Servidor;
+import com.appBancaria.servicio.ClienteConectado;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -22,6 +23,7 @@ public class PaginaPrincipal extends JFrame {
     private JLabel estadoLabel;
     private Servidor servidor;
     private Timer actualizadorClientes;
+    private int puerto;
 
     // Colores para los botones
     private final Color COLOR_BOTON_INICIAR = new Color(46, 139, 87); // Verde oscuro
@@ -29,9 +31,21 @@ public class PaginaPrincipal extends JFrame {
     private final Color COLOR_BOTON_DISABLED = new Color(150, 150, 150); // Gris
     private final Color COLOR_TEXTO_BOTON = new Color(0, 0, 0); // Negro
 
+    // Constructor que permite especificar el puerto
+    public PaginaPrincipal(int puerto) {
+        this.puerto = puerto;
+        inicializarUI();
+    }
+    
+    // Constructor predeterminado
     public PaginaPrincipal() {
+        this.puerto = 12345; // Puerto predeterminado
+        inicializarUI();
+    }
+    
+    private void inicializarUI() {
         // Configuración básica de la ventana
-        setTitle("Servidor Bancario");
+        setTitle("Servidor Bancario - Puerto: " + puerto);
         setSize(800, 500);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
@@ -43,7 +57,7 @@ public class PaginaPrincipal extends JFrame {
 
         // Panel superior con título y estado
         JPanel headerPanel = new JPanel(new BorderLayout());
-        JLabel tituloLabel = new JLabel("Panel de Control - Servidor Bancario", JLabel.CENTER);
+        JLabel tituloLabel = new JLabel("Panel de Control - Servidor Bancario (Puerto: " + puerto + ")", JLabel.CENTER);
         tituloLabel.setFont(new Font("Arial", Font.BOLD, 18));
         headerPanel.add(tituloLabel, BorderLayout.NORTH);
 
@@ -183,7 +197,7 @@ public class PaginaPrincipal extends JFrame {
     private void iniciarServidor() {
         logTextArea.setText(""); // Limpiar logs anteriores
         clientesTextArea.setText(""); // Limpiar lista de clientes
-        log("Iniciando servidor...");
+        log("Iniciando servidor en el puerto " + puerto + "...");
         estadoLabel.setText("INICIANDO");
         estadoLabel.setForeground(new Color(255, 150, 0));
         
@@ -194,7 +208,7 @@ public class PaginaPrincipal extends JFrame {
         // Ejecutar el servidor en un hilo separado para no bloquear la UI
         new Thread(() -> {
             try {
-                servidor = new Servidor();
+                servidor = new Servidor(puerto);
                 servidor.iniciar();
                 
                 // Actualizar UI en el hilo de EDT
@@ -207,7 +221,7 @@ public class PaginaPrincipal extends JFrame {
                     actualizarEstiloBoton(detenerButton, true);
                 });
                 
-                log("Servidor iniciado correctamente. Esperando conexiones...");
+                log("Servidor iniciado correctamente en el puerto " + puerto + ". Esperando conexiones...");
                 
                 // Iniciar el temporizador para actualizar la lista de clientes
                 iniciarActualizadorClientes();
@@ -268,7 +282,7 @@ public class PaginaPrincipal extends JFrame {
     private void actualizarListaClientes() {
         if (servidor != null) {
             // Obtener la lista actual de clientes conectados
-            java.util.List<Servidor.ClienteConectado> clientes = servidor.getClientesConectados();
+            java.util.List<ClienteConectado> clientes = servidor.getClientesConectados();
             
             // Construir texto con la información de los clientes
             StringBuilder sb = new StringBuilder();
@@ -285,7 +299,7 @@ public class PaginaPrincipal extends JFrame {
             } else {
                 // Listar cada cliente conectado
                 for (int i = 0; i < clientes.size(); i++) {
-                    Servidor.ClienteConectado cliente = clientes.get(i);
+                    ClienteConectado cliente = clientes.get(i);
                     sb.append(i + 1).append(". ");
                     sb.append(cliente.getInformacionCliente()).append("\n");
                     sb.append("   IP: ").append(cliente.getDireccionIP()).append("\n");

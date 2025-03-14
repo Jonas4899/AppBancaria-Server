@@ -5,7 +5,6 @@ import com.appBancaria.dto.SolicitudDTO;
 import com.appBancaria.modelo.Cliente;
 import com.appBancaria.db.DBConexion;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,128 +20,30 @@ import java.io.OutputStreamWriter;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Iterator;
-import java.util.concurrent.CopyOnWriteArrayList;
-
 
 public class Servidor {
-    private final int PORT = 12345;
+    private final int PORT;
     private ServerSocket serverSocket;
     private boolean running = true;
     private final Gson gson = new Gson();
     private final GestorCuentas gestorCuentas = new GestorCuentas();
+    private final GestorClientes gestorClientes;
     
-    // Lista thread-safe para mantener los clientes conectados
-    private final List<ClienteConectado> clientesConectados = new CopyOnWriteArrayList<>();
+    // Constructor que permite especificar el puerto
+    public Servidor(int port) {
+        this.PORT = port;
+        this.gestorClientes = new GestorClientes(gestorCuentas);
+    }
     
-    // Clase para almacenar información sobre clientes conectados
-    public static class ClienteConectado {
-        private final Socket socket;
-        private String direccionIP;
-        private String informacionCliente;
-        private Date horaConexion;
-        private String idSesion;
-        private String correoUsuario;
-        
-        public ClienteConectado(Socket socket) {
-            this.socket = socket;
-            this.direccionIP = socket.getInetAddress().getHostAddress();
-            this.horaConexion = new Date();
-            this.informacionCliente = "Cliente sin identificar";
-            this.idSesion = null;
-            this.correoUsuario = null;
-        }
-        
-        public Socket getSocket() {
-            return socket;
-        }
-        
-        public String getDireccionIP() {
-            return direccionIP;
-        }
-        
-        public Date getHoraConexion() {
-            return horaConexion;
-        }
-        
-        public String getInformacionCliente() {
-            return informacionCliente;
-        }
-        
-        public void setInformacionCliente(String informacionCliente) {
-            this.informacionCliente = informacionCliente;
-        }
-        
-        public String getIdSesion() {
-            return idSesion;
-        }
-        
-        public void setIdSesion(String idSesion) {
-            this.idSesion = idSesion;
-        }
-        
-        public String getCorreoUsuario() {
-            return correoUsuario;
-        }
-        
-        public void setCorreoUsuario(String correoUsuario) {
-            this.correoUsuario = correoUsuario;
-        }
-        
-        public boolean isSesionActiva() {
-            // Ahora determinamos si hay una sesión activa basándonos en si hay un idSesion
-            return idSesion != null;
-        }
-        
-        @Override
-        public String toString() {
-            SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss");
-            return informacionCliente + " - IP: " + direccionIP + " - Conectado desde: " + sdf.format(horaConexion);
-        }
+    // Constructor predeterminado
+    public Servidor() {
+        this.PORT = 12345;
+        this.gestorClientes = new GestorClientes(gestorCuentas);
     }
     
     // Método para obtener la lista de clientes conectados
     public List<ClienteConectado> getClientesConectados() {
-        // Primero verificar las conexiones activas antes de devolver la lista
-        verificarClientes();
-        return new ArrayList<>(clientesConectados);
-    }
-    
-    // Método para verificar qué clientes siguen conectados
-    private void verificarClientes() {
-        // Usar Iterator para evitar ConcurrentModificationException
-        Iterator<ClienteConectado> iterator = clientesConectados.iterator();
-        while (iterator.hasNext()) {
-            ClienteConectado cliente = iterator.next();
-            Socket socket = cliente.getSocket();
-            
-            // Verificar si el socket está cerrado o no está conectado
-            if (socket.isClosed() || !socket.isConnected() || socket.isInputShutdown()) {
-                log("Detectado cliente desconectado durante verificación: " + cliente.getDireccionIP());
-                
-                // Verificar si el cliente tenía una sesión activa
-                if (cliente.isSesionActiva() && cliente.getCorreoUsuario() != null && cliente.getIdSesion() != null) {
-                    try {
-                        // Cerrar la sesión en la base de datos
-                        log("Cerrando sesión de usuario desconectado: " + cliente.getCorreoUsuario());
-                        gestorCuentas.cerrarSesion(cliente.getCorreoUsuario(), cliente.getIdSesion());
-                        log("Sesión cerrada exitosamente para: " + cliente.getCorreoUsuario());
-                    } catch (SQLException e) {
-                        logError("Error al cerrar sesión de cliente desconectado: " + e.getMessage());
-                    }
-                }
-                
-                clientesConectados.remove(cliente);
-                log("Cliente removido de la lista en verificarClientes: " + cliente.getDireccionIP());
-                try {
-                    if (!socket.isClosed()) {
-                        socket.close();
-                    }
-                } catch (IOException e) {
-                    logError("Error cerrando socket: " + e.getMessage());
-                }
-            }
-        }
+        return gestorClientes.getClientesConectados();
     }
     
     public void iniciar() {
@@ -154,32 +55,11 @@ public class Servidor {
             iniciarServidor();
             
             // Iniciar temporizador para verificar clientes periódicamente
-            iniciarVerificadorClientes();
+            gestorClientes.iniciarVerificadorClientes();
         } catch (SQLException e) {
             logError("Failed to connect to database: " + e.getMessage());
             return; // Don't start server if database connection fails
         }
-    }
-
-    // Método que inicia un temporizador para verificar las conexiones
-    private void iniciarVerificadorClientes() {
-        Thread verificador = new Thread(() -> {
-            while (running) {
-                try {
-                    // Verificar cada 5 segundos
-                    Thread.sleep(5000);
-                    verificarClientes();
-                } catch (InterruptedException e) {
-                    if (running) {
-                        logError("Verificador de clientes interrumpido: " + e.getMessage());
-                    }
-                    break;
-                }
-            }
-        });
-        verificador.setDaemon(true);
-        verificador.start();
-        log("Verificador de clientes iniciado correctamente");
     }
 
     private void iniciarServidor() {
@@ -195,7 +75,7 @@ public class Servidor {
                         Socket clientSocket = serverSocket.accept();
                         // Crear el objeto ClienteConectado y añadirlo a la lista
                         ClienteConectado clienteConectado = new ClienteConectado(clientSocket);
-                        clientesConectados.add(clienteConectado);
+                        gestorClientes.agregarCliente(clienteConectado);
                         
                         // Create a new thread for each client
                         new Thread(new ClientHandler(clientSocket, clienteConectado)).start();
@@ -283,7 +163,7 @@ public class Servidor {
                     }
                     
                     // Eliminar el cliente de la lista cuando se desconecta
-                    clientesConectados.remove(clienteConectado);
+                    gestorClientes.removerCliente(clienteConectado);
                     log("Cliente removido de la lista de conexiones activas: " + clienteConectado.getDireccionIP());
                     
                     if (out != null) out.close();
@@ -650,26 +530,11 @@ public class Servidor {
             log("Stopping server...");
             running = false;
             
-            // Ya no cerraremos las sesiones activas en la base de datos
             log("Cerrando conexiones de clientes...");
-            int sesionesTotales = 0;
-            
-            for (ClienteConectado cliente : clientesConectados) {
-                sesionesTotales++;
-                
-                // Cerrar el socket del cliente
-                try {
-                    Socket socket = cliente.getSocket();
-                    if (socket != null && !socket.isClosed()) {
-                        socket.close();
-                    }
-                } catch (IOException e) {
-                    logError("Error al cerrar socket de cliente durante apagado: " + e.getMessage());
-                }
-            }
+            gestorClientes.detenerVerificador();
+            int sesionesTotales = gestorClientes.cerrarTodasLasConexiones();
             
             log("Total de conexiones: " + sesionesTotales);
-            clientesConectados.clear();
             
             // Cerrar el socket del servidor
             if (serverSocket != null) serverSocket.close();
@@ -683,23 +548,17 @@ public class Servidor {
             e.printStackTrace();
         }
     }
-    
-    // Helper methods for logging with timestamps
+
     private void log(String message) {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         System.out.println("[" + sdf.format(new Date()) + "] " + message);
     }
-    
+
     private void logError(String message) {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         System.err.println("[" + sdf.format(new Date()) + "] ERROR: " + message);
     }
 
-    /**
-     * Valida un token JWT y obtiene la información del token y del cliente asociado
-     * @param token El token JWT a validar
-     * @return Un mapa con la información del token y del cliente, o null si el token es inválido
-     */
     private Map<String, Object> validarYObtenerInfoToken(String token) {
         try {
             if (token == null || token.isEmpty()) {

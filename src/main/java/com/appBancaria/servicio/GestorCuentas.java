@@ -8,7 +8,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 public class GestorCuentas {
     
@@ -181,8 +180,6 @@ public class GestorCuentas {
                     System.err.println("Error al restaurar autoCommit: " + e.getMessage());
                 }
             }
-            
-            // No cerramos la conexión aquí, la gestiona el singleton DBConexion
         }
     }
 
@@ -298,27 +295,6 @@ public class GestorCuentas {
                 }
             }
         }
-    }
-    
-    private String generarNumeroCuenta() throws SQLException {
-        String numeroCuenta;
-        boolean existe;
-
-        String query = "SELECT COUNT(*) FROM cuentas WHERE numero_cuenta = ?";
-
-        try (Connection conn = DBConexion.getInstance().getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
-
-            do {
-                numeroCuenta = String.valueOf((int) (Math.random() * 900000) + 100000);
-                stmt.setString(1, numeroCuenta);
-                ResultSet rs = stmt.executeQuery();
-                rs.next();
-                existe = rs.getInt(1) > 0;
-            } while (existe);
-        }
-
-        return numeroCuenta;
     }
 
     /**
@@ -436,7 +412,7 @@ public class GestorCuentas {
                                     "JOIN cuentas c ON t.cuenta_origen_id = c.id " +
                                     "JOIN cuentas c2 ON t.cuenta_destino_id = c2.id " +
                                     "JOIN clientes cl ON c.cliente_id = cl.id " +
-                                    "WHERE c2.cliente_id = ?" +
+                                    "WHERE c2.cliente_id = ? " +
                                     "ORDER BY t.fecha_hora ASC";
         Map<String, Object> historial = new HashMap<>();
         
